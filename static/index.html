@@ -1,0 +1,1026 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Fura</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: var(--tg-theme-bg-color, #ffffff);
+    --text: var(--tg-theme-text-color, #111111);
+    --hint: var(--tg-theme-hint-color, #8a8a8e);
+    --card: var(--tg-theme-secondary-bg-color, #f2f2f7);
+    --link: var(--tg-theme-link-color, #2f6fed);
+    --btn: var(--tg-theme-button-color, #2f6fed);
+    --btn-text: var(--tg-theme-button-text-color, #ffffff);
+    --header-bg: var(--tg-theme-header-bg-color, var(--bg));
+
+    --amber: #FF9F1C;
+    --amber-dim: rgba(255, 159, 28, 0.16);
+    --green: #1FAA59;
+    --green-dim: rgba(31, 170, 89, 0.12);
+    --red: #E5484D;
+    --red-dim: rgba(229, 72, 77, 0.12);
+
+    --font-display: 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+    --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+    padding-bottom: 78px;
+  }
+
+  .app-header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--header-bg);
+    padding: 16px 18px 0 18px;
+  }
+
+  .app-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .app-header h1 {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: 22px;
+    margin: 0;
+    letter-spacing: -0.02em;
+  }
+
+  .add-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: none;
+    background: var(--btn);
+    color: var(--btn-text);
+    font-size: 22px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+
+  .road-divider {
+    margin-top: 14px;
+    height: 3px;
+    border-radius: 2px;
+    background-image: repeating-linear-gradient(
+      to right, var(--amber) 0 14px, transparent 14px 24px
+    );
+    background-size: 48px 3px;
+    animation: road-move 1.8s linear infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .road-divider { animation: none; }
+  }
+
+  @keyframes road-move {
+    from { background-position: 0 0; }
+    to { background-position: -48px 0; }
+  }
+
+  main {
+    padding: 16px 18px 24px 18px;
+  }
+
+  .page { display: none; }
+  .page.active { display: block; }
+
+  .empty-state {
+    text-align: center;
+    padding: 48px 20px;
+    color: var(--hint);
+  }
+  .empty-state .glyph {
+    font-size: 40px;
+    margin-bottom: 10px;
+  }
+  .empty-state button {
+    margin-top: 16px;
+  }
+
+  .summary-card {
+    background: var(--card);
+    border-radius: 16px;
+    padding: 18px;
+    display: flex;
+    align-items: stretch;
+    margin-bottom: 18px;
+  }
+  .summary-col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .summary-col .label {
+    font-size: 12px;
+    color: var(--hint);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .summary-col .value {
+    font-family: var(--font-mono);
+    font-weight: 700;
+    font-size: 17px;
+  }
+  .summary-divider {
+    width: 0;
+    border-left: 2px dashed var(--amber);
+    margin: 2px 16px;
+  }
+  .value.positive { color: var(--green); }
+  .value.negative { color: var(--red); }
+
+  .big-total {
+    text-align: center;
+    padding: 22px 10px 26px 10px;
+  }
+  .big-total .label {
+    font-size: 13px;
+    color: var(--hint);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 6px;
+  }
+  .big-total .value {
+    font-family: var(--font-mono);
+    font-weight: 700;
+    font-size: 32px;
+  }
+
+  .card {
+    background: var(--card);
+    border-radius: 14px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+    position: relative;
+  }
+  .card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .card-title {
+    font-weight: 700;
+    font-size: 15px;
+  }
+  .card-sub {
+    font-size: 12.5px;
+    color: var(--hint);
+    margin-top: 2px;
+  }
+  .card-amount {
+    font-family: var(--font-mono);
+    font-weight: 700;
+    font-size: 15px;
+    white-space: nowrap;
+  }
+  .card-row {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 8px;
+    font-size: 13px;
+    color: var(--hint);
+  }
+  .badge {
+    display: inline-block;
+    font-size: 11.5px;
+    font-weight: 700;
+    padding: 3px 9px;
+    border-radius: 20px;
+    background: var(--amber-dim);
+    color: var(--amber);
+  }
+  .badge.active-badge { background: var(--green-dim); color: var(--green); }
+
+  .section-title {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--hint);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin: 22px 0 10px 2px;
+  }
+
+  .month-bar-row { margin-bottom: 14px; }
+  .month-bar-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    margin-bottom: 5px;
+  }
+  .month-bar-label .m { color: var(--hint); font-family: var(--font-mono); }
+  .month-bar-track {
+    height: 8px;
+    background: var(--card);
+    border-radius: 6px;
+    overflow: hidden;
+    display: flex;
+  }
+  .month-bar-fill.income { background: var(--green); }
+  .month-bar-fill.expense { background: var(--red); }
+
+  .bottom-nav {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    display: flex;
+    background: var(--header-bg);
+    border-top: 1px solid var(--amber-dim);
+    padding: 6px 4px calc(6px + env(safe-area-inset-bottom)) 4px;
+    z-index: 20;
+  }
+  .nav-btn {
+    flex: 1;
+    background: none;
+    border: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    padding: 6px 2px;
+    color: var(--hint);
+    font-family: var(--font-body);
+    font-size: 10.5px;
+    cursor: pointer;
+  }
+  .nav-btn .icon { font-size: 20px; }
+  .nav-btn.active { color: var(--amber); }
+
+  .sheet-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.4);
+    display: none;
+    align-items: flex-end;
+    z-index: 30;
+  }
+  .sheet-overlay.open { display: flex; }
+  .sheet {
+    background: var(--bg);
+    width: 100%;
+    border-radius: 18px 18px 0 0;
+    padding: 20px 20px calc(20px + env(safe-area-inset-bottom)) 20px;
+    max-height: 85vh;
+    overflow-y: auto;
+  }
+  .sheet h2 {
+    font-family: var(--font-display);
+    font-size: 18px;
+    margin: 0 0 16px 0;
+  }
+  .field { margin-bottom: 14px; }
+  .field label {
+    display: block;
+    font-size: 12.5px;
+    color: var(--hint);
+    margin-bottom: 6px;
+  }
+  .field input, .field select {
+    width: 100%;
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid var(--amber-dim);
+    background: var(--card);
+    color: var(--text);
+    font-size: 15px;
+    font-family: var(--font-body);
+  }
+  .field input:focus, .field select:focus {
+    outline: 2px solid var(--amber);
+  }
+  .sheet-actions { display: flex; gap: 10px; margin-top: 6px; }
+  .btn-primary, .btn-secondary {
+    flex: 1;
+    padding: 13px;
+    border-radius: 12px;
+    border: none;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .btn-primary { background: var(--btn); color: var(--btn-text); }
+  .btn-secondary { background: var(--card); color: var(--text); }
+  .btn-danger { background: var(--red-dim); color: var(--red); }
+
+  .toast {
+    position: fixed;
+    top: 14px; left: 50%;
+    transform: translateX(-50%);
+    background: var(--text);
+    color: var(--bg);
+    padding: 10px 18px;
+    border-radius: 30px;
+    font-size: 13.5px;
+    z-index: 50;
+    opacity: 0;
+    transition: opacity 0.25s ease;
+    pointer-events: none;
+  }
+  .toast.show { opacity: 1; }
+
+  .icon-x {
+    position: absolute;
+    top: 10px; right: 10px;
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    border: none;
+    background: var(--red-dim);
+    color: var(--red);
+    font-size: 14px;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+
+<div class="app-header">
+  <div class="app-header-row">
+    <h1 id="page-title">Moshinalar</h1>
+    <button class="add-btn" id="add-btn">+</button>
+  </div>
+  <div class="road-divider"></div>
+</div>
+
+<main>
+  <!-- MOSHINALAR -->
+  <section class="page active" id="page-trucks"></section>
+
+  <!-- REYSLAR -->
+  <section class="page" id="page-trips"></section>
+
+  <!-- XARAJATLAR -->
+  <section class="page" id="page-expenses"></section>
+
+  <!-- SAFARLAR -->
+  <section class="page" id="page-legs"></section>
+
+  <!-- HISOBOT -->
+  <section class="page" id="page-report"></section>
+</main>
+
+<nav class="bottom-nav">
+  <button class="nav-btn active" data-page="trucks"><span class="icon">🚛</span>Moshinalar</button>
+  <button class="nav-btn" data-page="trips"><span class="icon">🧭</span>Reyslar</button>
+  <button class="nav-btn" data-page="expenses"><span class="icon">💸</span>Xarajatlar</button>
+  <button class="nav-btn" data-page="legs"><span class="icon">📍</span>Safarlar</button>
+  <button class="nav-btn" data-page="report"><span class="icon">📊</span>Hisobot</button>
+</nav>
+
+<div class="sheet-overlay" id="sheet-overlay">
+  <div class="sheet" id="sheet-content"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+if (tg) { tg.ready(); tg.expand(); }
+
+const initData = tg && tg.initData ? tg.initData : "";
+
+const state = {
+  page: "trucks",
+  trucks: [],
+  trips: [],
+  activeTrip: null,
+  report: null,
+};
+
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
+}
+
+function formatSum(n) {
+  const num = Math.round(Number(n) || 0);
+  const sign = num < 0 ? "-" : "";
+  const abs = Math.abs(num).toString();
+  const withSpaces = abs.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  return sign + withSpaces + " so'm";
+}
+
+function showToast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), 2200);
+}
+
+async function api(path, options = {}) {
+  const headers = Object.assign(
+    { "Content-Type": "application/json", "X-Telegram-Init-Data": initData },
+    options.headers || {}
+  );
+  const res = await fetch(path, Object.assign({}, options, { headers }));
+  if (!res.ok) {
+    let detail = "Xatolik yuz berdi";
+    try { detail = (await res.json()).detail || detail; } catch (e) {}
+    throw new Error(detail);
+  }
+  if (res.status === 204) return null;
+  const text = await res.text();
+  return text ? JSON.parse(text) : null;
+}
+
+// ---------------- Navigatsiya ----------------
+const pageTitles = {
+  trucks: "Moshinalar",
+  trips: "Reyslar",
+  expenses: "Xarajatlar",
+  legs: "Safarlar",
+  report: "Hisobot",
+};
+
+document.querySelectorAll(".nav-btn").forEach(btn => {
+  btn.addEventListener("click", () => switchPage(btn.dataset.page));
+});
+
+function switchPage(page) {
+  state.page = page;
+  document.querySelectorAll(".nav-btn").forEach(b => b.classList.toggle("active", b.dataset.page === page));
+  document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
+  document.getElementById("page-" + page).classList.add("active");
+  document.getElementById("page-title").textContent = pageTitles[page];
+  renderPage(page);
+}
+
+document.getElementById("add-btn").addEventListener("click", () => {
+  if (state.page === "trucks") openAddTruckSheet();
+  if (state.page === "trips") openAddTripSheet();
+  if (state.page === "expenses") openAddExpenseSheet();
+  if (state.page === "legs") openAddLegSheet();
+  if (state.page === "report") showToast("Hisobot avtomatik hisoblanadi");
+});
+
+function closeSheet() {
+  document.getElementById("sheet-overlay").classList.remove("open");
+}
+document.getElementById("sheet-overlay").addEventListener("click", (e) => {
+  if (e.target.id === "sheet-overlay") closeSheet();
+});
+
+function openSheet(html) {
+  document.getElementById("sheet-content").innerHTML = html;
+  document.getElementById("sheet-overlay").classList.add("open");
+}
+
+// ---------------- Ma'lumotlarni yuklash ----------------
+async function loadAll() {
+  const [trucks, trips, activeTrip, report] = await Promise.all([
+    api("/api/trucks"),
+    api("/api/trips"),
+    api("/api/trips/active"),
+    api("/api/report"),
+  ]);
+  state.trucks = trucks;
+  state.trips = trips;
+  state.activeTrip = activeTrip;
+  state.report = report;
+}
+
+function renderPage(page) {
+  if (page === "trucks") renderTrucks();
+  if (page === "trips") renderTrips();
+  if (page === "expenses") renderExpenses();
+  if (page === "legs") renderLegs();
+  if (page === "report") renderReport();
+}
+
+// ---------------- MOSHINALAR ----------------
+function renderTrucks() {
+  const el = document.getElementById("page-trucks");
+  if (state.trucks.length === 0) {
+    el.innerHTML = `<div class="empty-state">
+      <div class="glyph">🚛</div>
+      Hali fura qo'shilmagan.<br>Boshlash uchun yuqoridagi + tugmasini bosing.
+    </div>`;
+    return;
+  }
+  el.innerHTML = state.trucks.map(t => `
+    <div class="card" data-truck-id="${t.id}">
+      <div class="card-top">
+        <div>
+          <div class="card-title">${escapeHtml(t.name)}</div>
+          <div class="card-sub">Qo'shilgan: ${escapeHtml(t.created_at)}</div>
+        </div>
+        <span class="badge">Ta'mirlash: ${formatSum(t.repair_total)}</span>
+      </div>
+    </div>
+  `).join("");
+  el.querySelectorAll(".card").forEach(card => {
+    card.addEventListener("click", () => openTruckDetail(Number(card.dataset.truckId)));
+  });
+}
+
+function openAddTruckSheet() {
+  openSheet(`
+    <h2>Yangi fura qo'shish</h2>
+    <div class="field">
+      <label>Fura nomi / raqami</label>
+      <input type="text" id="truck-name" placeholder="Masalan: Isuzu 01A123BB">
+    </div>
+    <div class="sheet-actions">
+      <button class="btn-secondary" onclick="closeSheet()">Bekor qilish</button>
+      <button class="btn-primary" onclick="submitAddTruck()">Saqlash</button>
+    </div>
+  `);
+}
+
+async function submitAddTruck() {
+  const name = document.getElementById("truck-name").value.trim();
+  if (!name) return showToast("Nom kiriting");
+  try {
+    await api("/api/trucks", { method: "POST", body: JSON.stringify({ name }) });
+    closeSheet();
+    await loadAll();
+    renderTrucks();
+    showToast("Fura qo'shildi");
+  } catch (e) { showToast(e.message); }
+}
+
+async function openTruckDetail(truckId) {
+  const truck = state.trucks.find(t => t.id === truckId);
+  const expenses = await api(`/api/trucks/${truckId}/expenses`);
+  const listHtml = expenses.length ? expenses.map(e => `
+    <div class="card">
+      <div class="card-top">
+        <div>
+          <div class="card-title">${escapeHtml(e.category)}</div>
+          <div class="card-sub">${escapeHtml(e.created_at)}${e.note ? " · " + escapeHtml(e.note) : ""}</div>
+        </div>
+        <div class="card-amount">${formatSum(e.amount)}</div>
+      </div>
+    </div>
+  `).join("") : `<div class="empty-state" style="padding:24px 0;">Xarajat yo'q</div>`;
+
+  openSheet(`
+    <h2>${escapeHtml(truck.name)}</h2>
+    <div class="sheet-actions" style="margin-bottom:16px;">
+      <button class="btn-primary" onclick="openAddTruckExpenseSheet(${truckId})">+ Xarajat qo'shish</button>
+      <button class="btn-danger" onclick="confirmDeleteTruck(${truckId})">O'chirish</button>
+    </div>
+    ${listHtml}
+  `);
+}
+
+function openAddTruckExpenseSheet(truckId) {
+  openSheet(`
+    <h2>Fura xarajati</h2>
+    <div class="field">
+      <label>Turi</label>
+      <select id="truck-exp-category">
+        <option>Ta'mirlash</option>
+        <option>Balon</option>
+        <option>Boshqa</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Summasi (so'm)</label>
+      <input type="number" id="truck-exp-amount" placeholder="0">
+    </div>
+    <div class="field">
+      <label>Izoh (ixtiyoriy)</label>
+      <input type="text" id="truck-exp-note" placeholder="">
+    </div>
+    <div class="sheet-actions">
+      <button class="btn-secondary" onclick="openTruckDetail(${truckId})">Orqaga</button>
+      <button class="btn-primary" onclick="submitAddTruckExpense(${truckId})">Saqlash</button>
+    </div>
+  `);
+}
+
+async function submitAddTruckExpense(truckId) {
+  const category = document.getElementById("truck-exp-category").value;
+  const amount = parseFloat(document.getElementById("truck-exp-amount").value);
+  const note = document.getElementById("truck-exp-note").value.trim();
+  if (!amount || amount <= 0) return showToast("Summani kiriting");
+  try {
+    await api(`/api/trucks/${truckId}/expenses`, {
+      method: "POST", body: JSON.stringify({ category, amount, note })
+    });
+    await loadAll();
+    renderTrucks();
+    showToast("Xarajat qo'shildi");
+    openTruckDetail(truckId);
+  } catch (e) { showToast(e.message); }
+}
+
+async function confirmDeleteTruck(truckId) {
+  if (!confirm("Ushbu furani o'chirmoqchimisiz?")) return;
+  try {
+    await api(`/api/trucks/${truckId}`, { method: "DELETE" });
+    closeSheet();
+    await loadAll();
+    renderTrucks();
+    showToast("Fura o'chirildi");
+  } catch (e) { showToast(e.message); }
+}
+
+// ---------------- REYSLAR ----------------
+function renderTrips() {
+  const el = document.getElementById("page-trips");
+  const active = state.trips.filter(t => t.status === "active");
+  const finished = state.trips.filter(t => t.status === "finished");
+
+  let html = "";
+
+  if (active.length === 0 && finished.length === 0) {
+    el.innerHTML = `<div class="empty-state">
+      <div class="glyph">🧭</div>
+      Hali reys yo'q.<br>Yangi reys boshlash uchun + tugmasini bosing.
+    </div>`;
+    return;
+  }
+
+  if (active.length) {
+    html += `<div class="section-title">Faol reys</div>`;
+    html += active.map(t => tripCardHtml(t, true)).join("");
+  }
+  if (finished.length) {
+    html += `<div class="section-title">Tugagan reyslar</div>`;
+    html += finished.map(t => tripCardHtml(t, false)).join("");
+  }
+  el.innerHTML = html;
+
+  el.querySelectorAll(".card").forEach(card => {
+    card.addEventListener("click", () => openTripDetail(Number(card.dataset.tripId)));
+  });
+}
+
+function tripCardHtml(t, isActive) {
+  const profitClass = t.profit >= 0 ? "positive" : "negative";
+  return `
+    <div class="card" data-trip-id="${t.id}">
+      <div class="card-top">
+        <div>
+          <div class="card-title">${escapeHtml(t.truck_name)}</div>
+          <div class="card-sub">${escapeHtml(t.created_at)}</div>
+        </div>
+        <span class="badge ${isActive ? "active-badge" : ""}">${isActive ? "Faol" : "Tugagan"}</span>
+      </div>
+      <div class="card-row">
+        <span>Daromad: ${formatSum(t.income)}</span>
+        <span>Xarajat: ${formatSum(t.expense)}</span>
+      </div>
+      <div class="card-row">
+        <span class="card-amount value ${profitClass}">Foyda: ${formatSum(t.profit)}</span>
+      </div>
+    </div>
+  `;
+}
+
+function openAddTripSheet() {
+  if (state.activeTrip) {
+    return openSheet(`
+      <h2>Faol reys mavjud</h2>
+      <p style="color:var(--hint);">Yangi reys boshlashdan oldin joriy reysni yakunlang.</p>
+      <div class="sheet-actions">
+        <button class="btn-primary" onclick="closeSheet()">Tushunarli</button>
+      </div>
+    `);
+  }
+  if (state.trucks.length === 0) {
+    return openSheet(`
+      <h2>Avval fura qo'shing</h2>
+      <p style="color:var(--hint);">Reys boshlash uchun kamida bitta fura kerak.</p>
+      <div class="sheet-actions">
+        <button class="btn-primary" onclick="closeSheet()">Tushunarli</button>
+      </div>
+    `);
+  }
+  const options = state.trucks.map(t => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join("");
+  openSheet(`
+    <h2>Yangi reys boshlash</h2>
+    <div class="field">
+      <label>Fura</label>
+      <select id="trip-truck-id">${options}</select>
+    </div>
+    <div class="sheet-actions">
+      <button class="btn-secondary" onclick="closeSheet()">Bekor qilish</button>
+      <button class="btn-primary" onclick="submitAddTrip()">Boshlash</button>
+    </div>
+  `);
+}
+
+async function submitAddTrip() {
+  const truckId = Number(document.getElementById("trip-truck-id").value);
+  try {
+    await api("/api/trips", { method: "POST", body: JSON.stringify({ truck_id: truckId }) });
+    closeSheet();
+    await loadAll();
+    renderTrips();
+    showToast("Reys boshlandi");
+  } catch (e) { showToast(e.message); }
+}
+
+async function openTripDetail(tripId) {
+  const trip = await api(`/api/trips/${tripId}`);
+  const legsHtml = trip.legs.length ? trip.legs.map(l => `
+    <div class="card-row"><span>${escapeHtml(l.from_point)} → ${escapeHtml(l.to_point)}</span><span>${formatSum(l.price)}</span></div>
+  `).join("") : `<div class="card-row"><span style="color:var(--hint)">Safar qo'shilmagan</span></div>`;
+
+  const expHtml = trip.expenses.length ? trip.expenses.map(e => `
+    <div class="card-row"><span>${escapeHtml(e.category)}</span><span>${formatSum(e.amount)}</span></div>
+  `).join("") : `<div class="card-row"><span style="color:var(--hint)">Xarajat qo'shilmagan</span></div>`;
+
+  const profitClass = trip.profit >= 0 ? "positive" : "negative";
+
+  openSheet(`
+    <h2>${escapeHtml(trip.truck_name)} — reys #${trip.id}</h2>
+    <div class="summary-card" style="margin-bottom:16px;">
+      <div class="summary-col">
+        <span class="label">Daromad</span>
+        <span class="value">${formatSum(trip.income)}</span>
+      </div>
+      <div class="summary-divider"></div>
+      <div class="summary-col">
+        <span class="label">Xarajat</span>
+        <span class="value">${formatSum(trip.expense)}</span>
+      </div>
+    </div>
+    <div class="card-amount value ${profitClass}" style="font-size:17px; margin-bottom:16px;">
+      Sof foyda: ${formatSum(trip.profit)}
+    </div>
+    <div class="section-title">Safarlar</div>
+    ${legsHtml}
+    <div class="section-title">Xarajatlar</div>
+    ${expHtml}
+    ${trip.status === "active" ? `
+      <div class="sheet-actions" style="margin-top:18px;">
+        <button class="btn-primary" onclick="confirmFinishTrip(${trip.id})">Reysni yakunlash</button>
+      </div>
+    ` : ""}
+  `);
+}
+
+async function confirmFinishTrip(tripId) {
+  if (!confirm("Reysni yakunlaysizmi? Bu amalni ortga qaytarib bo'lmaydi.")) return;
+  try {
+    await api(`/api/trips/${tripId}/finish`, { method: "POST" });
+    closeSheet();
+    await loadAll();
+    renderTrips();
+    showToast("Reys yakunlandi");
+  } catch (e) { showToast(e.message); }
+}
+
+// ---------------- XARAJATLAR (faol reys) ----------------
+async function renderExpenses() {
+  const el = document.getElementById("page-expenses");
+  if (!state.activeTrip) {
+    el.innerHTML = `<div class="empty-state">
+      <div class="glyph">💸</div>
+      Faol reys yo'q.<br>Avval "Reyslar" bo'limida reys boshlang.
+    </div>`;
+    return;
+  }
+  const trip = await api(`/api/trips/${state.activeTrip.id}`);
+  const total = trip.expense;
+  const listHtml = trip.expenses.length ? trip.expenses.map(e => `
+    <div class="card">
+      <div class="card-top">
+        <div>
+          <div class="card-title">${escapeHtml(e.category)}</div>
+          <div class="card-sub">${escapeHtml(e.created_at)}${e.note ? " · " + escapeHtml(e.note) : ""}</div>
+        </div>
+        <div class="card-amount">${formatSum(e.amount)}</div>
+      </div>
+    </div>
+  `).join("") : `<div class="empty-state" style="padding:24px 0;">Hali xarajat kiritilmagan</div>`;
+
+  el.innerHTML = `
+    <div class="card-sub" style="margin-bottom:10px;">${escapeHtml(state.activeTrip.truck_name)} — joriy reys</div>
+    <div class="big-total">
+      <div class="label">Jami xarajat</div>
+      <div class="value">${formatSum(total)}</div>
+    </div>
+    ${listHtml}
+  `;
+}
+
+function openAddExpenseSheet() {
+  if (!state.activeTrip) {
+    return openSheet(`
+      <h2>Faol reys yo'q</h2>
+      <p style="color:var(--hint);">Xarajat qo'shish uchun avval reys boshlang.</p>
+      <div class="sheet-actions"><button class="btn-primary" onclick="closeSheet()">Tushunarli</button></div>
+    `);
+  }
+  openSheet(`
+    <h2>Xarajat qo'shish</h2>
+    <div class="field">
+      <label>Turi</label>
+      <select id="exp-category">
+        <option>Yoqilg'i</option>
+        <option>Yo'l haqi</option>
+        <option>Ovqatlanish</option>
+        <option>Boshqa</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Summasi (so'm)</label>
+      <input type="number" id="exp-amount" placeholder="0">
+    </div>
+    <div class="field">
+      <label>Izoh (ixtiyoriy)</label>
+      <input type="text" id="exp-note" placeholder="">
+    </div>
+    <div class="sheet-actions">
+      <button class="btn-secondary" onclick="closeSheet()">Bekor qilish</button>
+      <button class="btn-primary" onclick="submitAddExpense()">Saqlash</button>
+    </div>
+  `);
+}
+
+async function submitAddExpense() {
+  const category = document.getElementById("exp-category").value;
+  const amount = parseFloat(document.getElementById("exp-amount").value);
+  const note = document.getElementById("exp-note").value.trim();
+  if (!amount || amount <= 0) return showToast("Summani kiriting");
+  try {
+    await api(`/api/trips/${state.activeTrip.id}/expenses`, {
+      method: "POST", body: JSON.stringify({ category, amount, note })
+    });
+    closeSheet();
+    await loadAll();
+    renderExpenses();
+    showToast("Xarajat qo'shildi");
+  } catch (e) { showToast(e.message); }
+}
+
+// ---------------- SAFARLAR (faol reys) ----------------
+async function renderLegs() {
+  const el = document.getElementById("page-legs");
+  if (!state.activeTrip) {
+    el.innerHTML = `<div class="empty-state">
+      <div class="glyph">📍</div>
+      Faol reys yo'q.<br>Avval "Reyslar" bo'limida reys boshlang.
+    </div>`;
+    return;
+  }
+  const trip = await api(`/api/trips/${state.activeTrip.id}`);
+  const total = trip.income;
+  const listHtml = trip.legs.length ? trip.legs.map(l => `
+    <div class="card">
+      <div class="card-top">
+        <div>
+          <div class="card-title">${escapeHtml(l.from_point)} → ${escapeHtml(l.to_point)}</div>
+          <div class="card-sub">${escapeHtml(l.created_at)}</div>
+        </div>
+        <div class="card-amount">${formatSum(l.price)}</div>
+      </div>
+    </div>
+  `).join("") : `<div class="empty-state" style="padding:24px 0;">Hali safar kiritilmagan</div>`;
+
+  el.innerHTML = `
+    <div class="card-sub" style="margin-bottom:10px;">${escapeHtml(state.activeTrip.truck_name)} — joriy reys</div>
+    <div class="big-total">
+      <div class="label">Jami daromad</div>
+      <div class="value">${formatSum(total)}</div>
+    </div>
+    ${listHtml}
+  `;
+}
+
+function openAddLegSheet() {
+  if (!state.activeTrip) {
+    return openSheet(`
+      <h2>Faol reys yo'q</h2>
+      <p style="color:var(--hint);">Safar qo'shish uchun avval reys boshlang.</p>
+      <div class="sheet-actions"><button class="btn-primary" onclick="closeSheet()">Tushunarli</button></div>
+    `);
+  }
+  openSheet(`
+    <h2>Safar qo'shish</h2>
+    <div class="field">
+      <label>Qayerdan</label>
+      <input type="text" id="leg-from" placeholder="Masalan: Toshkent">
+    </div>
+    <div class="field">
+      <label>Qayerga</label>
+      <input type="text" id="leg-to" placeholder="Masalan: Samarqand">
+    </div>
+    <div class="field">
+      <label>Narxi (so'm)</label>
+      <input type="number" id="leg-price" placeholder="0">
+    </div>
+    <div class="sheet-actions">
+      <button class="btn-secondary" onclick="closeSheet()">Bekor qilish</button>
+      <button class="btn-primary" onclick="submitAddLeg()">Saqlash</button>
+    </div>
+  `);
+}
+
+async function submitAddLeg() {
+  const from_point = document.getElementById("leg-from").value.trim();
+  const to_point = document.getElementById("leg-to").value.trim();
+  const price = parseFloat(document.getElementById("leg-price").value);
+  if (!from_point || !to_point) return showToast("Yo'nalishni kiriting");
+  if (!price || price <= 0) return showToast("Narxni kiriting");
+  try {
+    await api(`/api/trips/${state.activeTrip.id}/legs`, {
+      method: "POST", body: JSON.stringify({ from_point, to_point, price })
+    });
+    closeSheet();
+    await loadAll();
+    renderLegs();
+    showToast("Safar qo'shildi");
+  } catch (e) { showToast(e.message); }
+}
+
+// ---------------- HISOBOT ----------------
+function renderReport() {
+  const el = document.getElementById("page-report");
+  const r = state.report;
+  if (!r || (r.total_income === 0 && r.total_expense === 0)) {
+    el.innerHTML = `<div class="empty-state">
+      <div class="glyph">📊</div>
+      Hali statistika uchun ma'lumot yo'q.
+    </div>`;
+    return;
+  }
+  const profitClass = r.net_profit >= 0 ? "positive" : "negative";
+
+  const maxMonth = Math.max(1, ...r.by_month.map(m => Math.max(m.income, m.expense)));
+  const monthsHtml = r.by_month.map(m => `
+    <div class="month-bar-row">
+      <div class="month-bar-label"><span class="m">${escapeHtml(m.month)}</span><span>${formatSum(m.profit)}</span></div>
+      <div class="month-bar-track">
+        <div class="month-bar-fill income" style="width:${(m.income / maxMonth * 100).toFixed(1)}%"></div>
+      </div>
+      <div class="month-bar-track" style="margin-top:3px;">
+        <div class="month-bar-fill expense" style="width:${(m.expense / maxMonth * 100).toFixed(1)}%"></div>
+      </div>
+    </div>
+  `).join("");
+
+  const trucksHtml = r.by_truck.map(t => `
+    <div class="card">
+      <div class="card-top">
+        <div class="card-title">${escapeHtml(t.name)}</div>
+        <div class="card-amount value ${t.profit >= 0 ? "positive" : "negative"}">${formatSum(t.profit)}</div>
+      </div>
+      <div class="card-row">
+        <span>Daromad: ${formatSum(t.income)}</span>
+        <span>Xarajat: ${formatSum(t.expense)}</span>
+      </div>
+    </div>
+  `).join("");
+
+  el.innerHTML = `
+    <div class="big-total">
+      <div class="label">Sof foyda / zarar</div>
+      <div class="value ${profitClass}">${formatSum(r.net_profit)}</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-col">
+        <span class="label">Jami daromad</span>
+        <span class="value">${formatSum(r.total_income)}</span>
+      </div>
+      <div class="summary-divider"></div>
+      <div class="summary-col">
+        <span class="label">Jami xarajat</span>
+        <span class="value">${formatSum(r.total_expense)}</span>
+      </div>
+    </div>
+    <div class="section-title">Oylar kesimida</div>
+    ${monthsHtml || `<div class="card-sub">Ma'lumot yo'q</div>`}
+    <div class="section-title">Moshinalar kesimida</div>
+    ${trucksHtml || `<div class="card-sub">Ma'lumot yo'q</div>`}
+  `;
+}
+
+// ---------------- Ishga tushirish ----------------
+(async function init() {
+  try {
+    await loadAll();
+    renderPage(state.page);
+  } catch (e) {
+    document.getElementById("page-trucks").innerHTML = `<div class="empty-state">Xatolik: ${escapeHtml(e.message)}</div>`;
+  }
+})();
+</script>
+</body>
+</html>
