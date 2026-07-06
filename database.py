@@ -135,6 +135,16 @@ async def list_truck_expenses(truck_id: int):
         return await cur.fetchall()
 
 
+async def delete_truck_expense(user_id: int, expense_id: int):
+    async with aiosqlite.connect(DB_PATH) as conn:
+        await conn.execute(
+            """DELETE FROM truck_expenses WHERE id=? AND truck_id IN
+               (SELECT id FROM trucks WHERE user_id=?)""",
+            (expense_id, user_id),
+        )
+        await conn.commit()
+
+
 # ---------------- Trips ----------------
 async def create_trip(user_id: int, truck_id: int) -> int:
     async with aiosqlite.connect(DB_PATH) as conn:
@@ -146,14 +156,27 @@ async def create_trip(user_id: int, truck_id: int) -> int:
         return cur.lastrowid
 
 
-async def get_active_trip(user_id: int):
+async def get_active_trips(user_id: int):
+    """Foydalanuvchining BARCHA faol reyslarini qaytaradi (har fura o'z reysiga ega bo'lishi mumkin)."""
     async with aiosqlite.connect(DB_PATH) as conn:
         cur = await conn.execute(
             """SELECT tr.id, tr.truck_id, t.name FROM trips tr
                JOIN trucks t ON t.id = tr.truck_id
                WHERE tr.user_id=? AND tr.status='active'
-               ORDER BY tr.created_at DESC LIMIT 1""",
+               ORDER BY tr.created_at DESC""",
             (user_id,),
+        )
+        return await cur.fetchall()
+
+
+async def get_active_trip_for_truck(user_id: int, truck_id: int):
+    """Berilgan furaning o'zida faol reys bor-yo'qligini tekshiradi."""
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cur = await conn.execute(
+            """SELECT id FROM trips
+               WHERE user_id=? AND truck_id=? AND status='active'
+               LIMIT 1""",
+            (user_id, truck_id),
         )
         return await cur.fetchone()
 
@@ -163,6 +186,34 @@ async def finish_trip(user_id: int, trip_id: int):
         await conn.execute(
             "UPDATE trips SET status='finished', finished_at=datetime('now') WHERE id=? AND user_id=?",
             (trip_id, user_id),
+        )
+        await conn.commit()
+
+
+async def delete_trip(user_id: int, trip_id: int):
+    async with aiosqlite.connect(DB_PATH) as conn:
+        await conn.execute("DELETE FROM trip_expenses WHERE trip_id=?", (trip_id,))
+        await conn.execute("DELETE FROM trip_legs WHERE trip_id=?", (trip_id,))
+        await conn.execute("DELETE FROM trips WHERE id=? AND user_id=?", (trip_id, user_id))
+        await conn.commit()
+
+
+async def delete_trip_expense(user_id: int, expense_id: int):
+    async with aiosqlite.connect(DB_PATH) as conn:
+        await conn.execute(
+            """DELETE FROM trip_expenses WHERE id=? AND trip_id IN
+               (SELECT id FROM trips WHERE user_id=?)""",
+            (expense_id, user_id),
+        )
+        await conn.commit()
+
+
+async def delete_trip_leg(user_id: int, leg_id: int):
+    async with aiosqlite.connect(DB_PATH) as conn:
+        await conn.execute(
+            """DELETE FROM trip_legs WHERE id=? AND trip_id IN
+               (SELECT id FROM trips WHERE user_id=?)""",
+            (leg_id, user_id),
         )
         await conn.commit()
 

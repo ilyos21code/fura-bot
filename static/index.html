@@ -259,13 +259,13 @@
     flex-direction: column;
     align-items: center;
     gap: 3px;
-    padding: 6px 2px;
+    padding: 6px 1px;
     color: var(--hint);
     font-family: var(--font-body);
-    font-size: 10.5px;
+    font-size: 9.5px;
     cursor: pointer;
   }
-  .nav-btn .icon { font-size: 20px; }
+  .nav-btn .icon { font-size: 18px; }
   .nav-btn.active { color: var(--amber); }
 
   .sheet-overlay {
@@ -350,6 +350,82 @@
     font-size: 14px;
     cursor: pointer;
   }
+
+  .lang-switch {
+    display: flex;
+    background: var(--card);
+    border-radius: 12px;
+    padding: 4px;
+    gap: 4px;
+    margin-bottom: 22px;
+  }
+  .lang-btn {
+    flex: 1;
+    border: none;
+    background: transparent;
+    padding: 12px;
+    border-radius: 9px;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--hint);
+    cursor: pointer;
+  }
+  .lang-btn.active {
+    background: var(--amber);
+    color: #1a1a1a;
+  }
+
+  .support-card {
+    background: var(--card);
+    border-radius: 16px;
+    padding: 20px;
+    text-align: center;
+    margin-bottom: 18px;
+  }
+  .support-card .glyph { font-size: 34px; margin-bottom: 8px; }
+  .support-card p {
+    color: var(--hint);
+    font-size: 13.5px;
+    line-height: 1.5;
+    margin: 8px 0 18px 0;
+  }
+  .support-btn {
+    display: inline-block;
+    background: var(--amber);
+    color: #1a1a1a;
+    text-decoration: none;
+    font-weight: 700;
+    font-size: 15px;
+    padding: 13px 26px;
+    border-radius: 12px;
+  }
+
+  .more-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 4px;
+    border-bottom: 1px solid var(--card);
+    font-size: 14px;
+  }
+  .more-row .hint { color: var(--hint); font-size: 12.5px; }
+
+  .mini-delete {
+    border: none;
+    background: var(--red-dim);
+    color: var(--red);
+    width: 24px; height: 24px;
+    min-width: 24px;
+    border-radius: 50%;
+    font-size: 12px;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .amount-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
 </style>
 </head>
 <body>
@@ -377,14 +453,18 @@
 
   <!-- HISOBOT -->
   <section class="page" id="page-report"></section>
+
+  <!-- KO'PROQ -->
+  <section class="page" id="page-more"></section>
 </main>
 
 <nav class="bottom-nav">
-  <button class="nav-btn active" data-page="trucks"><span class="icon">🚛</span>Moshinalar</button>
-  <button class="nav-btn" data-page="trips"><span class="icon">🧭</span>Reyslar</button>
-  <button class="nav-btn" data-page="expenses"><span class="icon">💸</span>Xarajatlar</button>
-  <button class="nav-btn" data-page="legs"><span class="icon">📍</span>Safarlar</button>
-  <button class="nav-btn" data-page="report"><span class="icon">📊</span>Hisobot</button>
+  <button class="nav-btn active" data-page="trucks"><span class="icon">🚛</span><span class="nav-label" data-key="Moshinalar">Moshinalar</span></button>
+  <button class="nav-btn" data-page="trips"><span class="icon">🧭</span><span class="nav-label" data-key="Reyslar">Reyslar</span></button>
+  <button class="nav-btn" data-page="expenses"><span class="icon">💸</span><span class="nav-label" data-key="Xarajatlar">Xarajatlar</span></button>
+  <button class="nav-btn" data-page="legs"><span class="icon">📍</span><span class="nav-label" data-key="Safarlar">Safarlar</span></button>
+  <button class="nav-btn" data-page="report"><span class="icon">📊</span><span class="nav-label" data-key="Hisobot">Hisobot</span></button>
+  <button class="nav-btn" data-page="more"><span class="icon">⚙️</span><span class="nav-label" data-key="Ko'proq">Ko'proq</span></button>
 </nav>
 
 <div class="sheet-overlay" id="sheet-overlay">
@@ -399,11 +479,150 @@ if (tg) { tg.ready(); tg.expand(); }
 
 const initData = tg && tg.initData ? tg.initData : "";
 
+// ---------------- Til (Lotin / Kirill) ----------------
+const TR = {
+  "Moshinalar": "Мошиналар",
+  "Reyslar": "Рейслар",
+  "Xarajatlar": "Харажатлар",
+  "Safarlar": "Сафарлар",
+  "Hisobot": "Ҳисобот",
+  "Ko'proq": "Кўпроқ",
+
+  "Hali fura qo'shilmagan.": "Ҳали фура қўшилмаган.",
+  "Boshlash uchun yuqoridagi + tugmasini bosing.": "Бошлаш учун юқоридаги + тугмасини босинг.",
+  "Qo'shilgan": "Қўшилган",
+  "Ta'mirlash": "Таъмирлаш",
+  "Yangi fura qo'shish": "Янги фура қўшиш",
+  "Fura nomi / raqami": "Фура номи / рақами",
+  "Bekor qilish": "Бекор қилиш",
+  "Saqlash": "Сақлаш",
+  "Fura qo'shildi": "Фура қўшилди",
+  "Nom kiriting": "Ном киритинг",
+  "Xarajat yo'q": "Харажат йўқ",
+  "+ Xarajat qo'shish": "+ Харажат қўшиш",
+  "O'chirish": "Ўчириш",
+  "Fura xarajati": "Фура харажати",
+  "Turi": "Тури",
+  "Extiyot qismlari": "Эҳтиёт қисмлари",
+  "Boshqa": "Бошқа",
+  "Summasi (so'm)": "Суммаси (сўм)",
+  "Izoh (ixtiyoriy)": "Изоҳ (ихтиёрий)",
+  "Orqaga": "Орқага",
+  "Summani kiriting": "Суммани киритинг",
+  "Xarajat qo'shildi": "Харажат қўшилди",
+  "Ushbu furani o'chirmoqchimisiz?": "Ушбу фурани ўчирмоқчимисиз?",
+  "Fura o'chirildi": "Фура ўчирилди",
+  "Ushbu xarajatni o'chirmoqchimisiz?": "Ушбу харажатни ўчирмоқчимисиз?",
+  "Xarajat o'chirildi": "Харажат ўчирилди",
+
+  "Hali reys yo'q.": "Ҳали рейс йўқ.",
+  "Yangi reys boshlash uchun + tugmasini bosing.": "Янги рейс бошлаш учун + тугмасини босинг.",
+  "Faol reys": "Фаол рейс",
+  "Tugagan reyslar": "Тугаган рейслар",
+  "Faol": "Фаол",
+  "Tugagan": "Тугаган",
+  "Daromad": "Даромад",
+  "Xarajat": "Харажат",
+  "Foyda": "Фойда",
+  "Barcha furalar band": "Барча фуралар банд",
+  "Barcha furalaringizda hozir faol reys bor. Yangisini boshlash uchun avval birortasini yakunlang, yoki yangi fura qo'shing.":
+    "Барча фураларингизда ҳозир фаол рейс бор. Янгисини бошлаш учун аввал бирортасини якунланг, ёки янги фура қўшинг.",
+  "Avval fura qo'shing": "Аввал фура қўшинг",
+  "Reys boshlash uchun kamida bitta fura kerak.": "Рейс бошлаш учун камида битта фура керак.",
+  "Tushunarli": "Тушунарли",
+  "Yangi reys boshlash": "Янги рейс бошлаш",
+  "Fura": "Фура",
+  "Boshlash": "Бошлаш",
+  "Reys boshlandi": "Рейс бошланди",
+  "Safar qo'shilmagan": "Сафар қўшилмаган",
+  "Xarajat qo'shilmagan": "Харажат қўшилмаган",
+  "Sof foyda": "Соф фойда",
+  "Reysni yakunlash": "Рейсни якунлаш",
+  "Reysni o'chirish": "Рейсни ўчириш",
+  "Reysni yakunlaysizmi? Bu amalni ortga qaytarib bo'lmaydi.": "Рейсни якунлайсизми? Бу амални ортга қайтариб бўлмайди.",
+  "Reys yakunlandi": "Рейс якунланди",
+  "Reysni butunlay o'chirmoqchimisiz? Bu amalni ortga qaytarib bo'lmaydi.": "Рейсни бутунлай ўчирмоқчимисиз? Бу амални ортга қайтариб бўлмайди.",
+  "Reys o'chirildi": "Рейс ўчирилди",
+  "Ushbu safarni o'chirmoqchimisiz?": "Ушбу сафарни ўчирмоқчимисиз?",
+  "Safar o'chirildi": "Сафар ўчирилди",
+  "reys": "рейс",
+
+  "Faol reys yo'q.": "Фаол рейс йўқ.",
+  "Avval \"Reyslar\" bo'limida reys boshlang.": "Аввал \"Рейслар\" бўлимида рейс бошланг.",
+  "joriy reys": "жорий рейс",
+  "Jami xarajat": "Жами харажат",
+  "Hali xarajat kiritilmagan": "Ҳали харажат киритилмаган",
+  "Xarajat qo'shish": "Харажат қўшиш",
+  "Yoqilg'i": "Ёқилғи",
+  "Yo'l haqi": "Йўл ҳақи",
+  "Ovqatlanish": "Овқатланиш",
+
+  "Jami daromad": "Жами даромад",
+  "Hali safar kiritilmagan": "Ҳали сафар киритилмаган",
+  "Safar qo'shish": "Сафар қўшиш",
+  "Qayerdan": "Қаердан",
+  "Qayerga": "Қаерга",
+  "Narxi (so'm)": "Нархи (сўм)",
+  "Yo'nalishni kiriting": "Йўналишни киритинг",
+  "Narxni kiriting": "Нархни киритинг",
+  "Safar qo'shildi": "Сафар қўшилди",
+
+  "Hali statistika uchun ma'lumot yo'q.": "Ҳали статистика учун маълумот йўқ.",
+  "Sof foyda / zarar": "Соф фойда / зарар",
+  "Oylar kesimida": "Ойлар кесимида",
+  "Moshinalar kesimida": "Мошиналар кесимида",
+  "Ma'lumot yo'q": "Маълумот йўқ",
+  "Hisobot avtomatik hisoblanadi": "Ҳисобот автоматик ҳисобланади",
+  "Xatolik yuz berdi": "Хатолик юз берди",
+  "Fura topilmadi": "Фура топилмади",
+  "Reys topilmadi": "Рейс топилмади",
+  "Bu fura uchun allaqachon faol reys bor": "Бу фура учун аллақачон фаол рейс бор",
+
+  "Til": "Тил",
+  "Valyuta": "Валюта",
+  "Kurs taxminiy: 1 USD ~ 12 000 so'm. Barcha ma'lumot so'mda saqlanadi, faqat ko'rinishi o'zgaradi.":
+    "Курс тахминий: 1 USD ~ 12 000 сўм. Барча маълумот сўмда сақланади, фақат кўриниши ўзгаради.",
+  "Ilova tilini tanlang": "Ilova tilini tanlang",
+  "Qo'llab-quvvatlash": "Қўллаб-қувватлаш",
+  "Bu bot mustaqil ishlab chiqilgan va bepul taqdim etiladi. Agar foydali deb topsangiz, rivojlantirishni qo'llab-quvvatlashingiz mumkin.":
+    "Бу бот мустақил ишлаб чиқилган ва бепул тақдим этилади. Агар фойдали деб топсангиз, ривожлантиришни қўллаб-қувватлашингиз мумкин.",
+  "Havola orqali qo'llab-quvvatlash": "Ҳавола орқали қўллаб-қувватлаш",
+  "Nusxalash": "Нусхалаш",
+  "Nusxalandi": "Нусхаланди",
+  "Rahmat!": "Раҳмат!",
+};
+
+let currentLang = localStorage.getItem("fura_lang") || "lotin";
+
+function tr(key) {
+  if (currentLang === "kirill" && TR[key]) return TR[key];
+  return key;
+}
+
+function setLanguage(lang) {
+  currentLang = lang;
+  localStorage.setItem("fura_lang", lang);
+  applyStaticLabels();
+  renderPage(state.page);
+}
+
+function applyStaticLabels() {
+  document.querySelectorAll(".nav-label").forEach(el => {
+    el.textContent = tr(el.dataset.key);
+  });
+  const titleEl = document.getElementById("page-title");
+  if (titleEl && pageTitles[state.page]) {
+    titleEl.textContent = tr(pageTitles[state.page]);
+  }
+}
+
 const state = {
   page: "trucks",
   trucks: [],
   trips: [],
-  activeTrip: null,
+  activeTrips: [],
+  selectedExpenseTripId: null,
+  selectedLegTripId: null,
   report: null,
 };
 
@@ -413,8 +632,23 @@ function escapeHtml(s) {
   }[c]));
 }
 
+// Taxminiy kurs (qo'lda belgilangan, real vaqtda yangilanmaydi)
+const EXCHANGE_RATE_USD = 12000; // 1 USD ~ shuncha so'm
+let currentCurrency = localStorage.getItem("fura_currency") || "UZS";
+
+function setCurrency(cur) {
+  currentCurrency = cur;
+  localStorage.setItem("fura_currency", cur);
+  renderPage(state.page);
+}
+
 function formatSum(n) {
   const num = Math.round(Number(n) || 0);
+  if (currentCurrency === "USD") {
+    const usd = num / EXCHANGE_RATE_USD;
+    const sign = usd < 0 ? "-" : "";
+    return sign + "$" + Math.abs(usd).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
   const sign = num < 0 ? "-" : "";
   const abs = Math.abs(num).toString();
   const withSpaces = abs.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
@@ -451,6 +685,7 @@ const pageTitles = {
   expenses: "Xarajatlar",
   legs: "Safarlar",
   report: "Hisobot",
+  more: "Ko'proq",
 };
 
 document.querySelectorAll(".nav-btn").forEach(btn => {
@@ -462,7 +697,8 @@ function switchPage(page) {
   document.querySelectorAll(".nav-btn").forEach(b => b.classList.toggle("active", b.dataset.page === page));
   document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
   document.getElementById("page-" + page).classList.add("active");
-  document.getElementById("page-title").textContent = pageTitles[page];
+  document.getElementById("page-title").textContent = tr(pageTitles[page]);
+  document.getElementById("add-btn").style.display = page === "more" ? "none" : "flex";
   renderPage(page);
 }
 
@@ -471,7 +707,7 @@ document.getElementById("add-btn").addEventListener("click", () => {
   if (state.page === "trips") openAddTripSheet();
   if (state.page === "expenses") openAddExpenseSheet();
   if (state.page === "legs") openAddLegSheet();
-  if (state.page === "report") showToast("Hisobot avtomatik hisoblanadi");
+  if (state.page === "report") showToast(tr("Hisobot avtomatik hisoblanadi"));
 });
 
 function closeSheet() {
@@ -488,7 +724,7 @@ function openSheet(html) {
 
 // ---------------- Ma'lumotlarni yuklash ----------------
 async function loadAll() {
-  const [trucks, trips, activeTrip, report] = await Promise.all([
+  const [trucks, trips, activeTrips, report] = await Promise.all([
     api("/api/trucks"),
     api("/api/trips"),
     api("/api/trips/active"),
@@ -496,8 +732,16 @@ async function loadAll() {
   ]);
   state.trucks = trucks;
   state.trips = trips;
-  state.activeTrip = activeTrip;
+  state.activeTrips = activeTrips;
   state.report = report;
+
+  // Tanlangan reys endi mavjud bo'lmasa yoki hali tanlanmagan bo'lsa - birinchisini tanlaymiz
+  if (!state.activeTrips.find(t => t.id === state.selectedExpenseTripId)) {
+    state.selectedExpenseTripId = state.activeTrips.length ? state.activeTrips[0].id : null;
+  }
+  if (!state.activeTrips.find(t => t.id === state.selectedLegTripId)) {
+    state.selectedLegTripId = state.activeTrips.length ? state.activeTrips[0].id : null;
+  }
 }
 
 function renderPage(page) {
@@ -506,6 +750,7 @@ function renderPage(page) {
   if (page === "expenses") renderExpenses();
   if (page === "legs") renderLegs();
   if (page === "report") renderReport();
+  if (page === "more") renderMore();
 }
 
 // ---------------- MOSHINALAR ----------------
@@ -514,7 +759,7 @@ function renderTrucks() {
   if (state.trucks.length === 0) {
     el.innerHTML = `<div class="empty-state">
       <div class="glyph">🚛</div>
-      Hali fura qo'shilmagan.<br>Boshlash uchun yuqoridagi + tugmasini bosing.
+      ${tr("Hali fura qo'shilmagan.")}<br>${tr("Boshlash uchun yuqoridagi + tugmasini bosing.")}
     </div>`;
     return;
   }
@@ -523,9 +768,9 @@ function renderTrucks() {
       <div class="card-top">
         <div>
           <div class="card-title">${escapeHtml(t.name)}</div>
-          <div class="card-sub">Qo'shilgan: ${escapeHtml(t.created_at)}</div>
+          <div class="card-sub">${tr("Qo'shilgan")}: ${escapeHtml(t.created_at)}</div>
         </div>
-        <span class="badge">Ta'mirlash: ${formatSum(t.repair_total)}</span>
+        <span class="badge">${tr("Ta'mirlash")}: ${formatSum(t.repair_total)}</span>
       </div>
     </div>
   `).join("");
@@ -536,28 +781,28 @@ function renderTrucks() {
 
 function openAddTruckSheet() {
   openSheet(`
-    <h2>Yangi fura qo'shish</h2>
+    <h2>${tr("Yangi fura qo'shish")}</h2>
     <div class="field">
-      <label>Fura nomi / raqami</label>
+      <label>${tr("Fura nomi / raqami")}</label>
       <input type="text" id="truck-name" placeholder="Masalan: Isuzu 01A123BB">
     </div>
     <div class="sheet-actions">
-      <button class="btn-secondary" onclick="closeSheet()">Bekor qilish</button>
-      <button class="btn-primary" onclick="submitAddTruck()">Saqlash</button>
+      <button class="btn-secondary" onclick="closeSheet()">${tr("Bekor qilish")}</button>
+      <button class="btn-primary" onclick="submitAddTruck()">${tr("Saqlash")}</button>
     </div>
   `);
 }
 
 async function submitAddTruck() {
   const name = document.getElementById("truck-name").value.trim();
-  if (!name) return showToast("Nom kiriting");
+  if (!name) return showToast(tr("Nom kiriting"));
   try {
     await api("/api/trucks", { method: "POST", body: JSON.stringify({ name }) });
     closeSheet();
     await loadAll();
     renderTrucks();
-    showToast("Fura qo'shildi");
-  } catch (e) { showToast(e.message); }
+    showToast(tr("Fura qo'shildi"));
+  } catch (e) { showToast(tr(e.message)); }
 }
 
 async function openTruckDetail(truckId) {
@@ -567,75 +812,89 @@ async function openTruckDetail(truckId) {
     <div class="card">
       <div class="card-top">
         <div>
-          <div class="card-title">${escapeHtml(e.category)}</div>
+          <div class="card-title">${escapeHtml(tr(e.category))}</div>
           <div class="card-sub">${escapeHtml(e.created_at)}${e.note ? " · " + escapeHtml(e.note) : ""}</div>
         </div>
-        <div class="card-amount">${formatSum(e.amount)}</div>
+        <div class="amount-row">
+          <div class="card-amount">${formatSum(e.amount)}</div>
+          <button class="mini-delete" onclick="deleteTruckExpense(${truckId}, ${e.id})">✕</button>
+        </div>
       </div>
     </div>
-  `).join("") : `<div class="empty-state" style="padding:24px 0;">Xarajat yo'q</div>`;
+  `).join("") : `<div class="empty-state" style="padding:24px 0;">${tr("Xarajat yo'q")}</div>`;
 
   openSheet(`
     <h2>${escapeHtml(truck.name)}</h2>
     <div class="sheet-actions" style="margin-bottom:16px;">
-      <button class="btn-primary" onclick="openAddTruckExpenseSheet(${truckId})">+ Xarajat qo'shish</button>
-      <button class="btn-danger" onclick="confirmDeleteTruck(${truckId})">O'chirish</button>
+      <button class="btn-primary" onclick="openAddTruckExpenseSheet(${truckId})">${tr("+ Xarajat qo'shish")}</button>
+      <button class="btn-danger" onclick="confirmDeleteTruck(${truckId})">${tr("O'chirish")}</button>
     </div>
     ${listHtml}
   `);
 }
 
+async function deleteTruckExpense(truckId, expenseId) {
+  if (!confirm(tr("Ushbu xarajatni o'chirmoqchimisiz?"))) return;
+  try {
+    await api(`/api/trucks/${truckId}/expenses/${expenseId}`, { method: "DELETE" });
+    await loadAll();
+    renderTrucks();
+    openTruckDetail(truckId);
+    showToast(tr("Xarajat o'chirildi"));
+  } catch (e) { showToast(tr(e.message)); }
+}
+
 function openAddTruckExpenseSheet(truckId) {
   openSheet(`
-    <h2>Fura xarajati</h2>
+    <h2>${tr("Fura xarajati")}</h2>
     <div class="field">
-      <label>Turi</label>
+      <label>${tr("Turi")}</label>
       <select id="truck-exp-category">
-        <option>Ta'mirlash</option>
-        <option>Balon</option>
-        <option>Boshqa</option>
+        <option value="Ta'mirlash">${tr("Ta'mirlash")}</option>
+        <option value="Extiyot qismlari">${tr("Extiyot qismlari")}</option>
+        <option value="Boshqa">${tr("Boshqa")}</option>
       </select>
     </div>
     <div class="field">
-      <label>Summasi (so'm)</label>
-      <input type="number" id="truck-exp-amount" placeholder="0">
+      <label>${tr("Summasi (so'm)")}</label>
+      <input type="text" inputmode="decimal" id="truck-exp-amount" placeholder="0">
     </div>
     <div class="field">
-      <label>Izoh (ixtiyoriy)</label>
+      <label>${tr("Izoh (ixtiyoriy)")}</label>
       <input type="text" id="truck-exp-note" placeholder="">
     </div>
     <div class="sheet-actions">
-      <button class="btn-secondary" onclick="openTruckDetail(${truckId})">Orqaga</button>
-      <button class="btn-primary" onclick="submitAddTruckExpense(${truckId})">Saqlash</button>
+      <button class="btn-secondary" onclick="openTruckDetail(${truckId})">${tr("Orqaga")}</button>
+      <button class="btn-primary" onclick="submitAddTruckExpense(${truckId})">${tr("Saqlash")}</button>
     </div>
   `);
 }
 
 async function submitAddTruckExpense(truckId) {
   const category = document.getElementById("truck-exp-category").value;
-  const amount = parseFloat(document.getElementById("truck-exp-amount").value);
+  const amount = parseFloat(document.getElementById("truck-exp-amount").value.replace(",", ".").replace(/\s/g, ""));
   const note = document.getElementById("truck-exp-note").value.trim();
-  if (!amount || amount <= 0) return showToast("Summani kiriting");
+  if (!amount || amount <= 0) return showToast(tr("Summani kiriting"));
   try {
     await api(`/api/trucks/${truckId}/expenses`, {
       method: "POST", body: JSON.stringify({ category, amount, note })
     });
     await loadAll();
     renderTrucks();
-    showToast("Xarajat qo'shildi");
+    showToast(tr("Xarajat qo'shildi"));
     openTruckDetail(truckId);
-  } catch (e) { showToast(e.message); }
+  } catch (e) { showToast(tr(e.message)); }
 }
 
 async function confirmDeleteTruck(truckId) {
-  if (!confirm("Ushbu furani o'chirmoqchimisiz?")) return;
+  if (!confirm(tr("Ushbu furani o'chirmoqchimisiz?"))) return;
   try {
     await api(`/api/trucks/${truckId}`, { method: "DELETE" });
     closeSheet();
     await loadAll();
     renderTrucks();
-    showToast("Fura o'chirildi");
-  } catch (e) { showToast(e.message); }
+    showToast(tr("Fura o'chirildi"));
+  } catch (e) { showToast(tr(e.message)); }
 }
 
 // ---------------- REYSLAR ----------------
@@ -649,17 +908,17 @@ function renderTrips() {
   if (active.length === 0 && finished.length === 0) {
     el.innerHTML = `<div class="empty-state">
       <div class="glyph">🧭</div>
-      Hali reys yo'q.<br>Yangi reys boshlash uchun + tugmasini bosing.
+      ${tr("Hali reys yo'q.")}<br>${tr("Yangi reys boshlash uchun + tugmasini bosing.")}
     </div>`;
     return;
   }
 
   if (active.length) {
-    html += `<div class="section-title">Faol reys</div>`;
+    html += `<div class="section-title">${tr("Faol reys")}</div>`;
     html += active.map(t => tripCardHtml(t, true)).join("");
   }
   if (finished.length) {
-    html += `<div class="section-title">Tugagan reyslar</div>`;
+    html += `<div class="section-title">${tr("Tugagan reyslar")}</div>`;
     html += finished.map(t => tripCardHtml(t, false)).join("");
   }
   el.innerHTML = html;
@@ -678,48 +937,50 @@ function tripCardHtml(t, isActive) {
           <div class="card-title">${escapeHtml(t.truck_name)}</div>
           <div class="card-sub">${escapeHtml(t.created_at)}</div>
         </div>
-        <span class="badge ${isActive ? "active-badge" : ""}">${isActive ? "Faol" : "Tugagan"}</span>
+        <span class="badge ${isActive ? "active-badge" : ""}">${isActive ? tr("Faol") : tr("Tugagan")}</span>
       </div>
       <div class="card-row">
-        <span>Daromad: ${formatSum(t.income)}</span>
-        <span>Xarajat: ${formatSum(t.expense)}</span>
+        <span>${tr("Daromad")}: ${formatSum(t.income)}</span>
+        <span>${tr("Xarajat")}: ${formatSum(t.expense)}</span>
       </div>
       <div class="card-row">
-        <span class="card-amount value ${profitClass}">Foyda: ${formatSum(t.profit)}</span>
+        <span class="card-amount value ${profitClass}">${tr("Foyda")}: ${formatSum(t.profit)}</span>
       </div>
     </div>
   `;
 }
 
 function openAddTripSheet() {
-  if (state.activeTrip) {
-    return openSheet(`
-      <h2>Faol reys mavjud</h2>
-      <p style="color:var(--hint);">Yangi reys boshlashdan oldin joriy reysni yakunlang.</p>
-      <div class="sheet-actions">
-        <button class="btn-primary" onclick="closeSheet()">Tushunarli</button>
-      </div>
-    `);
-  }
   if (state.trucks.length === 0) {
     return openSheet(`
-      <h2>Avval fura qo'shing</h2>
-      <p style="color:var(--hint);">Reys boshlash uchun kamida bitta fura kerak.</p>
+      <h2>${tr("Avval fura qo'shing")}</h2>
+      <p style="color:var(--hint);">${tr("Reys boshlash uchun kamida bitta fura kerak.")}</p>
       <div class="sheet-actions">
-        <button class="btn-primary" onclick="closeSheet()">Tushunarli</button>
+        <button class="btn-primary" onclick="closeSheet()">${tr("Tushunarli")}</button>
       </div>
     `);
   }
-  const options = state.trucks.map(t => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join("");
+  const activeTruckIds = new Set(state.activeTrips.map(t => t.truck_id));
+  const availableTrucks = state.trucks.filter(t => !activeTruckIds.has(t.id));
+  if (availableTrucks.length === 0) {
+    return openSheet(`
+      <h2>${tr("Barcha furalar band")}</h2>
+      <p style="color:var(--hint);">${tr("Barcha furalaringizda hozir faol reys bor. Yangisini boshlash uchun avval birortasini yakunlang, yoki yangi fura qo'shing.")}</p>
+      <div class="sheet-actions">
+        <button class="btn-primary" onclick="closeSheet()">${tr("Tushunarli")}</button>
+      </div>
+    `);
+  }
+  const options = availableTrucks.map(t => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join("");
   openSheet(`
-    <h2>Yangi reys boshlash</h2>
+    <h2>${tr("Yangi reys boshlash")}</h2>
     <div class="field">
-      <label>Fura</label>
+      <label>${tr("Fura")}</label>
       <select id="trip-truck-id">${options}</select>
     </div>
     <div class="sheet-actions">
-      <button class="btn-secondary" onclick="closeSheet()">Bekor qilish</button>
-      <button class="btn-primary" onclick="submitAddTrip()">Boshlash</button>
+      <button class="btn-secondary" onclick="closeSheet()">${tr("Bekor qilish")}</button>
+      <button class="btn-primary" onclick="submitAddTrip()">${tr("Boshlash")}</button>
     </div>
   `);
 }
@@ -731,24 +992,36 @@ async function submitAddTrip() {
     closeSheet();
     await loadAll();
     renderTrips();
-    showToast("Reys boshlandi");
-  } catch (e) { showToast(e.message); }
+    showToast(tr("Reys boshlandi"));
+  } catch (e) { showToast(tr(e.message)); }
 }
 
 async function openTripDetail(tripId) {
   const trip = await api(`/api/trips/${tripId}`);
   const legsHtml = trip.legs.length ? trip.legs.map(l => `
-    <div class="card-row"><span>${escapeHtml(l.from_point)} → ${escapeHtml(l.to_point)}</span><span>${formatSum(l.price)}</span></div>
-  `).join("") : `<div class="card-row"><span style="color:var(--hint)">Safar qo'shilmagan</span></div>`;
+    <div class="card-row">
+      <span>${escapeHtml(l.from_point)} → ${escapeHtml(l.to_point)}</span>
+      <span class="amount-row">
+        <span>${formatSum(l.price)}</span>
+        <button class="mini-delete" onclick="deleteTripLeg(${tripId}, ${l.id})">✕</button>
+      </span>
+    </div>
+  `).join("") : `<div class="card-row"><span style="color:var(--hint)">${tr("Safar qo'shilmagan")}</span></div>`;
 
   const expHtml = trip.expenses.length ? trip.expenses.map(e => `
-    <div class="card-row"><span>${escapeHtml(e.category)}</span><span>${formatSum(e.amount)}</span></div>
-  `).join("") : `<div class="card-row"><span style="color:var(--hint)">Xarajat qo'shilmagan</span></div>`;
+    <div class="card-row">
+      <span>${escapeHtml(tr(e.category))}</span>
+      <span class="amount-row">
+        <span>${formatSum(e.amount)}</span>
+        <button class="mini-delete" onclick="deleteTripExpense(${tripId}, ${e.id})">✕</button>
+      </span>
+    </div>
+  `).join("") : `<div class="card-row"><span style="color:var(--hint)">${tr("Xarajat qo'shilmagan")}</span></div>`;
 
   const profitClass = trip.profit >= 0 ? "positive" : "negative";
 
   openSheet(`
-    <h2>${escapeHtml(trip.truck_name)} — reys #${trip.id}</h2>
+    <h2>${escapeHtml(trip.truck_name)} — ${tr("reys")} #${trip.id}</h2>
     <div class="summary-card" style="margin-bottom:16px;">
       <div class="summary-col">
         <span class="label">Daromad</span>
@@ -761,126 +1034,199 @@ async function openTripDetail(tripId) {
       </div>
     </div>
     <div class="card-amount value ${profitClass}" style="font-size:17px; margin-bottom:16px;">
-      Sof foyda: ${formatSum(trip.profit)}
+      ${tr("Sof foyda")}: ${formatSum(trip.profit)}
     </div>
-    <div class="section-title">Safarlar</div>
+    <div class="section-title">${tr("Safarlar")}</div>
     ${legsHtml}
-    <div class="section-title">Xarajatlar</div>
+    <div class="section-title">${tr("Xarajatlar")}</div>
     ${expHtml}
-    ${trip.status === "active" ? `
-      <div class="sheet-actions" style="margin-top:18px;">
-        <button class="btn-primary" onclick="confirmFinishTrip(${trip.id})">Reysni yakunlash</button>
-      </div>
-    ` : ""}
+    <div class="sheet-actions" style="margin-top:18px;">
+      ${trip.status === "active" ? `<button class="btn-primary" onclick="confirmFinishTrip(${trip.id})">${tr("Reysni yakunlash")}</button>` : ""}
+      <button class="btn-danger" onclick="confirmDeleteTrip(${trip.id})">${tr("Reysni o'chirish")}</button>
+    </div>
   `);
 }
 
+async function deleteTripLeg(tripId, legId) {
+  if (!confirm(tr("Ushbu safarni o'chirmoqchimisiz?"))) return;
+  try {
+    await api(`/api/trips/${tripId}/legs/${legId}`, { method: "DELETE" });
+    await loadAll();
+    renderTrips();
+    openTripDetail(tripId);
+    showToast(tr("Safar o'chirildi"));
+  } catch (e) { showToast(tr(e.message)); }
+}
+
+async function deleteTripExpense(tripId, expenseId) {
+  if (!confirm(tr("Ushbu xarajatni o'chirmoqchimisiz?"))) return;
+  try {
+    await api(`/api/trips/${tripId}/expenses/${expenseId}`, { method: "DELETE" });
+    await loadAll();
+    renderTrips();
+    openTripDetail(tripId);
+    showToast(tr("Xarajat o'chirildi"));
+  } catch (e) { showToast(tr(e.message)); }
+}
+
+async function confirmDeleteTrip(tripId) {
+  if (!confirm(tr("Reysni butunlay o'chirmoqchimisiz? Bu amalni ortga qaytarib bo'lmaydi."))) return;
+  try {
+    await api(`/api/trips/${tripId}`, { method: "DELETE" });
+    closeSheet();
+    await loadAll();
+    renderTrips();
+    showToast(tr("Reys o'chirildi"));
+  } catch (e) { showToast(tr(e.message)); }
+}
+
 async function confirmFinishTrip(tripId) {
-  if (!confirm("Reysni yakunlaysizmi? Bu amalni ortga qaytarib bo'lmaydi.")) return;
+  if (!confirm(tr("Reysni yakunlaysizmi? Bu amalni ortga qaytarib bo'lmaydi."))) return;
   try {
     await api(`/api/trips/${tripId}/finish`, { method: "POST" });
     closeSheet();
     await loadAll();
     renderTrips();
-    showToast("Reys yakunlandi");
-  } catch (e) { showToast(e.message); }
+    showToast(tr("Reys yakunlandi"));
+  } catch (e) { showToast(tr(e.message)); }
 }
 
 // ---------------- XARAJATLAR (faol reys) ----------------
+function truckSwitcherHtml(activeTrips, selectedId, onclickFnName) {
+  if (activeTrips.length < 2) return "";
+  return `<div style="display:flex; gap:8px; overflow-x:auto; margin-bottom:14px; padding-bottom:2px;">
+    ${activeTrips.map(t => `
+      <button onclick="${onclickFnName}(${t.id})"
+        style="white-space:nowrap; border:none; border-radius:20px; padding:8px 14px; font-size:13px; font-weight:700;
+               background:${t.id === selectedId ? "var(--amber)" : "var(--card)"};
+               color:${t.id === selectedId ? "#1a1a1a" : "var(--text)"}; cursor:pointer;">
+        ${escapeHtml(t.truck_name)}
+      </button>
+    `).join("")}
+  </div>`;
+}
+
+function selectExpenseTrip(tripId) {
+  state.selectedExpenseTripId = tripId;
+  renderExpenses();
+}
+
 async function renderExpenses() {
   const el = document.getElementById("page-expenses");
-  if (!state.activeTrip) {
+  if (state.activeTrips.length === 0) {
     el.innerHTML = `<div class="empty-state">
       <div class="glyph">💸</div>
-      Faol reys yo'q.<br>Avval "Reyslar" bo'limida reys boshlang.
+      ${tr("Faol reys yo'q.")}<br>${tr('Avval "Reyslar" bo\'limida reys boshlang.')}
     </div>`;
     return;
   }
-  const trip = await api(`/api/trips/${state.activeTrip.id}`);
+  const tripId = state.selectedExpenseTripId || state.activeTrips[0].id;
+  const trip = await api(`/api/trips/${tripId}`);
   const total = trip.expense;
   const listHtml = trip.expenses.length ? trip.expenses.map(e => `
     <div class="card">
       <div class="card-top">
         <div>
-          <div class="card-title">${escapeHtml(e.category)}</div>
+          <div class="card-title">${escapeHtml(tr(e.category))}</div>
           <div class="card-sub">${escapeHtml(e.created_at)}${e.note ? " · " + escapeHtml(e.note) : ""}</div>
         </div>
-        <div class="card-amount">${formatSum(e.amount)}</div>
+        <div class="amount-row">
+          <div class="card-amount">${formatSum(e.amount)}</div>
+          <button class="mini-delete" onclick="deleteExpenseFromList(${tripId}, ${e.id})">✕</button>
+        </div>
       </div>
     </div>
-  `).join("") : `<div class="empty-state" style="padding:24px 0;">Hali xarajat kiritilmagan</div>`;
+  `).join("") : `<div class="empty-state" style="padding:24px 0;">${tr("Hali xarajat kiritilmagan")}</div>`;
 
   el.innerHTML = `
-    <div class="card-sub" style="margin-bottom:10px;">${escapeHtml(state.activeTrip.truck_name)} — joriy reys</div>
+    ${truckSwitcherHtml(state.activeTrips, tripId, "selectExpenseTrip")}
+    <div class="card-sub" style="margin-bottom:10px;">${escapeHtml(trip.truck_name)} — ${tr("joriy reys")}</div>
     <div class="big-total">
-      <div class="label">Jami xarajat</div>
+      <div class="label">${tr("Jami xarajat")}</div>
       <div class="value">${formatSum(total)}</div>
     </div>
     ${listHtml}
   `;
 }
 
+async function deleteExpenseFromList(tripId, expenseId) {
+  if (!confirm(tr("Ushbu xarajatni o'chirmoqchimisiz?"))) return;
+  try {
+    await api(`/api/trips/${tripId}/expenses/${expenseId}`, { method: "DELETE" });
+    await loadAll();
+    renderExpenses();
+    showToast(tr("Xarajat o'chirildi"));
+  } catch (e) { showToast(tr(e.message)); }
+}
+
 function openAddExpenseSheet() {
-  if (!state.activeTrip) {
+  if (state.activeTrips.length === 0) {
     return openSheet(`
       <h2>Faol reys yo'q</h2>
       <p style="color:var(--hint);">Xarajat qo'shish uchun avval reys boshlang.</p>
-      <div class="sheet-actions"><button class="btn-primary" onclick="closeSheet()">Tushunarli</button></div>
+      <div class="sheet-actions"><button class="btn-primary" onclick="closeSheet()">${tr("Tushunarli")}</button></div>
     `);
   }
   openSheet(`
-    <h2>Xarajat qo'shish</h2>
+    <h2>${tr("Xarajat qo'shish")}</h2>
     <div class="field">
-      <label>Turi</label>
+      <label>${tr("Turi")}</label>
       <select id="exp-category">
-        <option>Yoqilg'i</option>
-        <option>Yo'l haqi</option>
-        <option>Ovqatlanish</option>
-        <option>Boshqa</option>
+        <option value="Yoqilg'i">${tr("Yoqilg'i")}</option>
+        <option value="Yo'l haqi">${tr("Yo'l haqi")}</option>
+        <option value="Ovqatlanish">${tr("Ovqatlanish")}</option>
+        <option value="Boshqa">${tr("Boshqa")}</option>
       </select>
     </div>
     <div class="field">
-      <label>Summasi (so'm)</label>
-      <input type="number" id="exp-amount" placeholder="0">
+      <label>${tr("Summasi (so'm)")}</label>
+      <input type="text" inputmode="decimal" id="exp-amount" placeholder="0">
     </div>
     <div class="field">
-      <label>Izoh (ixtiyoriy)</label>
+      <label>${tr("Izoh (ixtiyoriy)")}</label>
       <input type="text" id="exp-note" placeholder="">
     </div>
     <div class="sheet-actions">
-      <button class="btn-secondary" onclick="closeSheet()">Bekor qilish</button>
-      <button class="btn-primary" onclick="submitAddExpense()">Saqlash</button>
+      <button class="btn-secondary" onclick="closeSheet()">${tr("Bekor qilish")}</button>
+      <button class="btn-primary" onclick="submitAddExpense()">${tr("Saqlash")}</button>
     </div>
   `);
 }
 
 async function submitAddExpense() {
   const category = document.getElementById("exp-category").value;
-  const amount = parseFloat(document.getElementById("exp-amount").value);
+  const amount = parseFloat(document.getElementById("exp-amount").value.replace(",", ".").replace(/\s/g, ""));
   const note = document.getElementById("exp-note").value.trim();
-  if (!amount || amount <= 0) return showToast("Summani kiriting");
+  if (!amount || amount <= 0) return showToast(tr("Summani kiriting"));
+  const tripId = state.selectedExpenseTripId || state.activeTrips[0].id;
   try {
-    await api(`/api/trips/${state.activeTrip.id}/expenses`, {
+    await api(`/api/trips/${tripId}/expenses`, {
       method: "POST", body: JSON.stringify({ category, amount, note })
     });
     closeSheet();
     await loadAll();
     renderExpenses();
-    showToast("Xarajat qo'shildi");
-  } catch (e) { showToast(e.message); }
+    showToast(tr("Xarajat qo'shildi"));
+  } catch (e) { showToast(tr(e.message)); }
 }
 
 // ---------------- SAFARLAR (faol reys) ----------------
+function selectLegTrip(tripId) {
+  state.selectedLegTripId = tripId;
+  renderLegs();
+}
+
 async function renderLegs() {
   const el = document.getElementById("page-legs");
-  if (!state.activeTrip) {
+  if (state.activeTrips.length === 0) {
     el.innerHTML = `<div class="empty-state">
       <div class="glyph">📍</div>
-      Faol reys yo'q.<br>Avval "Reyslar" bo'limida reys boshlang.
+      ${tr("Faol reys yo'q.")}<br>${tr('Avval "Reyslar" bo\'limida reys boshlang.')}
     </div>`;
     return;
   }
-  const trip = await api(`/api/trips/${state.activeTrip.id}`);
+  const tripId = state.selectedLegTripId || state.activeTrips[0].id;
+  const trip = await api(`/api/trips/${tripId}`);
   const total = trip.income;
   const listHtml = trip.legs.length ? trip.legs.map(l => `
     <div class="card">
@@ -889,46 +1235,60 @@ async function renderLegs() {
           <div class="card-title">${escapeHtml(l.from_point)} → ${escapeHtml(l.to_point)}</div>
           <div class="card-sub">${escapeHtml(l.created_at)}</div>
         </div>
-        <div class="card-amount">${formatSum(l.price)}</div>
+        <div class="amount-row">
+          <div class="card-amount">${formatSum(l.price)}</div>
+          <button class="mini-delete" onclick="deleteLegFromList(${tripId}, ${l.id})">✕</button>
+        </div>
       </div>
     </div>
-  `).join("") : `<div class="empty-state" style="padding:24px 0;">Hali safar kiritilmagan</div>`;
+  `).join("") : `<div class="empty-state" style="padding:24px 0;">${tr("Hali safar kiritilmagan")}</div>`;
 
   el.innerHTML = `
-    <div class="card-sub" style="margin-bottom:10px;">${escapeHtml(state.activeTrip.truck_name)} — joriy reys</div>
+    ${truckSwitcherHtml(state.activeTrips, tripId, "selectLegTrip")}
+    <div class="card-sub" style="margin-bottom:10px;">${escapeHtml(trip.truck_name)} — ${tr("joriy reys")}</div>
     <div class="big-total">
-      <div class="label">Jami daromad</div>
+      <div class="label">${tr("Jami daromad")}</div>
       <div class="value">${formatSum(total)}</div>
     </div>
     ${listHtml}
   `;
 }
 
+async function deleteLegFromList(tripId, legId) {
+  if (!confirm(tr("Ushbu safarni o'chirmoqchimisiz?"))) return;
+  try {
+    await api(`/api/trips/${tripId}/legs/${legId}`, { method: "DELETE" });
+    await loadAll();
+    renderLegs();
+    showToast(tr("Safar o'chirildi"));
+  } catch (e) { showToast(tr(e.message)); }
+}
+
 function openAddLegSheet() {
-  if (!state.activeTrip) {
+  if (state.activeTrips.length === 0) {
     return openSheet(`
       <h2>Faol reys yo'q</h2>
       <p style="color:var(--hint);">Safar qo'shish uchun avval reys boshlang.</p>
-      <div class="sheet-actions"><button class="btn-primary" onclick="closeSheet()">Tushunarli</button></div>
+      <div class="sheet-actions"><button class="btn-primary" onclick="closeSheet()">${tr("Tushunarli")}</button></div>
     `);
   }
   openSheet(`
-    <h2>Safar qo'shish</h2>
+    <h2>${tr("Safar qo'shish")}</h2>
     <div class="field">
-      <label>Qayerdan</label>
+      <label>${tr("Qayerdan")}</label>
       <input type="text" id="leg-from" placeholder="Masalan: Toshkent">
     </div>
     <div class="field">
-      <label>Qayerga</label>
+      <label>${tr("Qayerga")}</label>
       <input type="text" id="leg-to" placeholder="Masalan: Samarqand">
     </div>
     <div class="field">
-      <label>Narxi (so'm)</label>
-      <input type="number" id="leg-price" placeholder="0">
+      <label>${tr("Narxi (so'm)")}</label>
+      <input type="text" inputmode="decimal" id="leg-price" placeholder="0">
     </div>
     <div class="sheet-actions">
-      <button class="btn-secondary" onclick="closeSheet()">Bekor qilish</button>
-      <button class="btn-primary" onclick="submitAddLeg()">Saqlash</button>
+      <button class="btn-secondary" onclick="closeSheet()">${tr("Bekor qilish")}</button>
+      <button class="btn-primary" onclick="submitAddLeg()">${tr("Saqlash")}</button>
     </div>
   `);
 }
@@ -936,18 +1296,19 @@ function openAddLegSheet() {
 async function submitAddLeg() {
   const from_point = document.getElementById("leg-from").value.trim();
   const to_point = document.getElementById("leg-to").value.trim();
-  const price = parseFloat(document.getElementById("leg-price").value);
-  if (!from_point || !to_point) return showToast("Yo'nalishni kiriting");
-  if (!price || price <= 0) return showToast("Narxni kiriting");
+  const price = parseFloat(document.getElementById("leg-price").value.replace(",", ".").replace(/\s/g, ""));
+  if (!from_point || !to_point) return showToast(tr("Yo'nalishni kiriting"));
+  if (!price || price <= 0) return showToast(tr("Narxni kiriting"));
+  const tripId = state.selectedLegTripId || state.activeTrips[0].id;
   try {
-    await api(`/api/trips/${state.activeTrip.id}/legs`, {
+    await api(`/api/trips/${tripId}/legs`, {
       method: "POST", body: JSON.stringify({ from_point, to_point, price })
     });
     closeSheet();
     await loadAll();
     renderLegs();
-    showToast("Safar qo'shildi");
-  } catch (e) { showToast(e.message); }
+    showToast(tr("Safar qo'shildi"));
+  } catch (e) { showToast(tr(e.message)); }
 }
 
 // ---------------- HISOBOT ----------------
@@ -957,7 +1318,7 @@ function renderReport() {
   if (!r || (r.total_income === 0 && r.total_expense === 0)) {
     el.innerHTML = `<div class="empty-state">
       <div class="glyph">📊</div>
-      Hali statistika uchun ma'lumot yo'q.
+      ${tr("Hali statistika uchun ma'lumot yo'q.")}
     </div>`;
     return;
   }
@@ -983,37 +1344,84 @@ function renderReport() {
         <div class="card-amount value ${t.profit >= 0 ? "positive" : "negative"}">${formatSum(t.profit)}</div>
       </div>
       <div class="card-row">
-        <span>Daromad: ${formatSum(t.income)}</span>
-        <span>Xarajat: ${formatSum(t.expense)}</span>
+        <span>${tr("Daromad")}: ${formatSum(t.income)}</span>
+        <span>${tr("Xarajat")}: ${formatSum(t.expense)}</span>
       </div>
     </div>
   `).join("");
 
   el.innerHTML = `
     <div class="big-total">
-      <div class="label">Sof foyda / zarar</div>
+      <div class="label">${tr("Sof foyda / zarar")}</div>
       <div class="value ${profitClass}">${formatSum(r.net_profit)}</div>
     </div>
     <div class="summary-card">
       <div class="summary-col">
-        <span class="label">Jami daromad</span>
+        <span class="label">${tr("Jami daromad")}</span>
         <span class="value">${formatSum(r.total_income)}</span>
       </div>
       <div class="summary-divider"></div>
       <div class="summary-col">
-        <span class="label">Jami xarajat</span>
+        <span class="label">${tr("Jami xarajat")}</span>
         <span class="value">${formatSum(r.total_expense)}</span>
       </div>
     </div>
-    <div class="section-title">Oylar kesimida</div>
-    ${monthsHtml || `<div class="card-sub">Ma'lumot yo'q</div>`}
-    <div class="section-title">Moshinalar kesimida</div>
-    ${trucksHtml || `<div class="card-sub">Ma'lumot yo'q</div>`}
+    <div class="section-title">${tr("Oylar kesimida")}</div>
+    ${monthsHtml || `<div class="card-sub">${tr("Ma'lumot yo'q")}</div>`}
+    <div class="section-title">${tr("Moshinalar kesimida")}</div>
+    ${trucksHtml || `<div class="card-sub">${tr("Ma'lumot yo'q")}</div>`}
   `;
 }
 
+// ---------------- KO'PROQ ----------------
+const SUPPORT_CARD_NUMBER = "5614 6818 1030 5767";
+const SUPPORT_CARD_HOLDER = "A.I";
+
+function renderMore() {
+  const el = document.getElementById("page-more");
+  el.innerHTML = `
+    <div class="section-title">${tr("Til")}</div>
+    <div class="lang-switch">
+      <button class="lang-btn ${currentLang === "lotin" ? "active" : ""}" onclick="setLanguage('lotin')">Lotin</button>
+      <button class="lang-btn ${currentLang === "kirill" ? "active" : ""}" onclick="setLanguage('kirill')">Кирилл</button>
+    </div>
+
+    <div class="section-title">${tr("Valyuta")}</div>
+    <div class="lang-switch">
+      <button class="lang-btn ${currentCurrency === "UZS" ? "active" : ""}" onclick="setCurrency('UZS')">UZS</button>
+      <button class="lang-btn ${currentCurrency === "USD" ? "active" : ""}" onclick="setCurrency('USD')">USD</button>
+    </div>
+    <p style="color: var(--hint); font-size: 12px; margin: -12px 0 22px 2px;">${tr("Kurs taxminiy: 1 USD ~ 12 000 so'm. Barcha ma'lumot so'mda saqlanadi, faqat ko'rinishi o'zgaradi.")}</p>
+
+    <div class="section-title">${tr("Qo'llab-quvvatlash")}</div>
+    <div class="support-card">
+      <div class="glyph">☕</div>
+      <p>${tr("Bu bot mustaqil ishlab chiqilgan va bepul taqdim etiladi. Agar foydali deb topsangiz, rivojlantirishni qo'llab-quvvatlashingiz mumkin.")}</p>
+      <div style="font-family: var(--font-mono); font-size: 19px; font-weight: 700; letter-spacing: 0.5px; margin-bottom: 4px;">
+        ${SUPPORT_CARD_NUMBER}
+      </div>
+      <div style="color: var(--hint); font-size: 13px; margin-bottom: 18px;">${SUPPORT_CARD_HOLDER}</div>
+      <button class="support-btn" onclick="copySupportCard()">${tr("Nusxalash")}</button>
+    </div>
+  `;
+}
+
+function copySupportCard() {
+  const number = SUPPORT_CARD_NUMBER.replace(/\s/g, "");
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(number)
+      .then(() => showToast(tr("Nusxalandi")))
+      .catch(() => showToast(number));
+  } else {
+    showToast(number);
+  }
+}
+
+
+
 // ---------------- Ishga tushirish ----------------
 (async function init() {
+  applyStaticLabels();
   try {
     await loadAll();
     renderPage(state.page);
@@ -1021,6 +1429,7 @@ function renderReport() {
     document.getElementById("page-trucks").innerHTML = `<div class="empty-state">Xatolik: ${escapeHtml(e.message)}</div>`;
   }
 })();
+
 </script>
 </body>
 </html>

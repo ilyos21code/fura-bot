@@ -109,6 +109,18 @@ async def api_add_truck_expense(
     return {"id": expense_id}
 
 
+@app.delete("/api/trucks/{truck_id}/expenses/{expense_id}")
+async def api_delete_truck_expense(
+    truck_id: int, expense_id: int, x_telegram_init_data: str = Header(default="")
+):
+    user_id = await get_user_id(x_telegram_init_data)
+    truck = await db.get_truck(user_id, truck_id)
+    if not truck:
+        raise HTTPException(404, "Fura topilmadi")
+    await db.delete_truck_expense(user_id, expense_id)
+    return {"ok": True}
+
+
 # ---------------- Trips ----------------
 @app.get("/api/trips")
 async def api_list_trips(x_telegram_init_data: str = Header(default="")):
@@ -131,12 +143,10 @@ async def api_list_trips(x_telegram_init_data: str = Header(default="")):
 
 
 @app.get("/api/trips/active")
-async def api_active_trip(x_telegram_init_data: str = Header(default="")):
+async def api_active_trips(x_telegram_init_data: str = Header(default="")):
     user_id = await get_user_id(x_telegram_init_data)
-    row = await db.get_active_trip(user_id)
-    if not row:
-        return None
-    return {"id": row[0], "truck_id": row[1], "truck_name": row[2]}
+    rows = await db.get_active_trips(user_id)
+    return [{"id": r[0], "truck_id": r[1], "truck_name": r[2]} for r in rows]
 
 
 @app.post("/api/trips")
@@ -145,9 +155,9 @@ async def api_create_trip(payload: TripIn, x_telegram_init_data: str = Header(de
     truck = await db.get_truck(user_id, payload.truck_id)
     if not truck:
         raise HTTPException(404, "Fura topilmadi")
-    existing = await db.get_active_trip(user_id)
+    existing = await db.get_active_trip_for_truck(user_id, payload.truck_id)
     if existing:
-        raise HTTPException(400, "Sizda allaqachon faol reys bor")
+        raise HTTPException(400, "Bu fura uchun allaqachon faol reys bor")
     trip_id = await db.create_trip(user_id, payload.truck_id)
     return {"id": trip_id}
 
@@ -159,6 +169,16 @@ async def api_finish_trip(trip_id: int, x_telegram_init_data: str = Header(defau
     if not trip:
         raise HTTPException(404, "Reys topilmadi")
     await db.finish_trip(user_id, trip_id)
+    return {"ok": True}
+
+
+@app.delete("/api/trips/{trip_id}")
+async def api_delete_trip(trip_id: int, x_telegram_init_data: str = Header(default="")):
+    user_id = await get_user_id(x_telegram_init_data)
+    trip = await db.get_trip(user_id, trip_id)
+    if not trip:
+        raise HTTPException(404, "Reys topilmadi")
+    await db.delete_trip(user_id, trip_id)
     return {"ok": True}
 
 
@@ -205,6 +225,18 @@ async def api_add_trip_expense(
     return {"id": expense_id}
 
 
+@app.delete("/api/trips/{trip_id}/expenses/{expense_id}")
+async def api_delete_trip_expense(
+    trip_id: int, expense_id: int, x_telegram_init_data: str = Header(default="")
+):
+    user_id = await get_user_id(x_telegram_init_data)
+    trip = await db.get_trip(user_id, trip_id)
+    if not trip:
+        raise HTTPException(404, "Reys topilmadi")
+    await db.delete_trip_expense(user_id, expense_id)
+    return {"ok": True}
+
+
 @app.post("/api/trips/{trip_id}/legs")
 async def api_add_trip_leg(
     trip_id: int, payload: TripLegIn, x_telegram_init_data: str = Header(default="")
@@ -217,6 +249,18 @@ async def api_add_trip_leg(
         trip_id, payload.from_point.strip(), payload.to_point.strip(), payload.price
     )
     return {"id": leg_id}
+
+
+@app.delete("/api/trips/{trip_id}/legs/{leg_id}")
+async def api_delete_trip_leg(
+    trip_id: int, leg_id: int, x_telegram_init_data: str = Header(default="")
+):
+    user_id = await get_user_id(x_telegram_init_data)
+    trip = await db.get_trip(user_id, trip_id)
+    if not trip:
+        raise HTTPException(404, "Reys topilmadi")
+    await db.delete_trip_leg(user_id, leg_id)
+    return {"ok": True}
 
 
 # ---------------- Report ----------------
