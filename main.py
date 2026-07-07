@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import time
 
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse
@@ -9,14 +10,50 @@ from pydantic import BaseModel
 import uvicorn
 
 import database as db
+import rate as rate_module
 from auth import validate_init_data, InitDataError
 
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "PUT_YOUR_TOKEN_HERE")
 DEV_MODE = os.getenv("DEV_MODE", "0") == "1"
 
 app = FastAPI(title="Fura Mini App")
+
+# Joriy USD kursi (xotirada), doimiy yangilanib turadi
+_current_usd_rate = rate_module.DEFAULT_RATE
+
+
+async def get_usd_rate() -> float:
+    """Joriy USD kursini qaytaradi (bazadagi so'nggi saqlangan qiymatdan)."""
+    global _current_usd_rate
+    saved = await db.get_setting("usd_rate")
+    if saved:
+        try:
+            _current_usd_rate = float(saved)
+        except ValueError:
+            pass
+    return _current_usd_rate
+
+
+def to_uzs(amount: float, currency: str, usd_rate: float) -> float:
+    """Kiritilgan summani so'mga aylantiradi (bazada hamma narsa so'mda saqlanadi)."""
+    if currency == "USD":
+        return amount * usd_rate
+    return amount
+
+
+async def update_rate_loop():
+    """Har 6 soatda cbu.uz dan kursni yangilab turadi."""
+    global _current_usd_rate
+    while True:
+        fetched = rate_module.fetch_usd_rate()
+        if fetched:
+            _current_usd_rate = fetched
+            await db.set_setting("usd_rate", str(fetched))
+            logger.info("USD kursi yangilandi: %s", fetched)
+        await asyncio.sleep(6 * 3600)
 
 
 async def get_user_id(x_telegram_init_data: str = Header(default="")) -> int:
@@ -40,6 +77,7 @@ class TruckIn(BaseModel):
 class TruckExpenseIn(BaseModel):
     category: str
     amount: float
+    currency: str = "UZS"
     note: str = ""
 
 
@@ -50,6 +88,7 @@ class TripIn(BaseModel):
 class TripExpenseIn(BaseModel):
     category: str
     amount: float
+    currency: str = "UZS"
     note: str = ""
 
 
@@ -57,6 +96,14 @@ class TripLegIn(BaseModel):
     from_point: str
     to_point: str
     price: float
+    currency: str = "UZS"
+
+
+# ---------------- Kurs ----------------
+@app.get("/api/rate")
+async def api_rate():
+    r = await get_usd_rate()
+    return {"usd": r}
 
 
 # ---------------- Trucks ----------------
@@ -92,7 +139,7 @@ async def api_list_truck_expenses(truck_id: int, x_telegram_init_data: str = Hea
         raise HTTPException(404, "Fura topilmadi")
     rows = await db.list_truck_expenses(truck_id)
     return [
-        {"id": r[0], "category": r[1], "amount": r[2], "note": r[3], "created_at": r[4]}
+        {"id": r[0], "category": r[1], "amount": r[2], "currency": r[3], "rate": r[4], "note": r[5], "created_at": r[6]}
         for r in rows
     ]
 
@@ -105,7 +152,8 @@ async def api_add_truck_expense(
     truck = await db.get_truck(user_id, truck_id)
     if not truck:
         raise HTTPException(404, "Fura topilmadi")
-    expense_id = await db.add_truck_expense(truck_id, payload.category, payload.amount, payload.note)
+    usd_rate = 1  # bot hozircha faqat USD da ishlaydi
+    expense_id = await db.add_truck_expense(truck_id, payload.category, payload.amount, payload.currency, usd_rate, payload.note)
     return {"id": expense_id}
 
 
@@ -190,8 +238,10 @@ async def api_get_trip(trip_id: int, x_telegram_init_data: str = Header(default=
         raise HTTPException(404, "Reys topilmadi")
     expenses = await db.list_trip_expenses(trip_id)
     legs = await db.list_trip_legs(trip_id)
-    income = sum(l[3] for l in legs)
-    expense = sum(e[2] for e in expenses)
+    # list_trip_legs: id, from, to, price, currency, rate, created_at
+    income = sum((l[3] * l[5]) if l[4] == "USD" else l[3] for l in legs)
+    # list_trip_expenses: id, category, amount, currency, rate, note, created_at
+    expense = sum((e[2] * e[4]) if e[3] == "USD" else e[2] for e in expenses)
     return {
         "id": trip[0],
         "truck_id": trip[1],
@@ -203,11 +253,11 @@ async def api_get_trip(trip_id: int, x_telegram_init_data: str = Header(default=
         "expense": expense,
         "profit": income - expense,
         "expenses": [
-            {"id": e[0], "category": e[1], "amount": e[2], "note": e[3], "created_at": e[4]}
+            {"id": e[0], "category": e[1], "amount": e[2], "currency": e[3], "rate": e[4], "note": e[5], "created_at": e[6]}
             for e in expenses
         ],
         "legs": [
-            {"id": l[0], "from_point": l[1], "to_point": l[2], "price": l[3], "created_at": l[4]}
+            {"id": l[0], "from_point": l[1], "to_point": l[2], "price": l[3], "currency": l[4], "rate": l[5], "created_at": l[6]}
             for l in legs
         ],
     }
@@ -221,7 +271,8 @@ async def api_add_trip_expense(
     trip = await db.get_trip(user_id, trip_id)
     if not trip:
         raise HTTPException(404, "Reys topilmadi")
-    expense_id = await db.add_trip_expense(trip_id, payload.category, payload.amount, payload.note)
+    usd_rate = 1  # bot hozircha faqat USD da ishlaydi
+    expense_id = await db.add_trip_expense(trip_id, payload.category, payload.amount, payload.currency, usd_rate, payload.note)
     return {"id": expense_id}
 
 
@@ -245,8 +296,9 @@ async def api_add_trip_leg(
     trip = await db.get_trip(user_id, trip_id)
     if not trip:
         raise HTTPException(404, "Reys topilmadi")
+    usd_rate = 1  # bot hozircha faqat USD da ishlaydi
     leg_id = await db.add_trip_leg(
-        trip_id, payload.from_point.strip(), payload.to_point.strip(), payload.price
+        trip_id, payload.from_point.strip(), payload.to_point.strip(), payload.price, payload.currency, usd_rate
     )
     return {"id": leg_id}
 
@@ -270,6 +322,37 @@ async def api_report(x_telegram_init_data: str = Header(default="")):
     return await db.get_report(user_id)
 
 
+# ---------------- Admin ----------------
+ADMIN_TELEGRAM_ID = os.getenv("ADMIN_TELEGRAM_ID", "")
+
+
+async def get_telegram_id(x_telegram_init_data: str) -> int:
+    if DEV_MODE and not x_telegram_init_data:
+        return 999999999
+    try:
+        user = validate_init_data(x_telegram_init_data, BOT_TOKEN)
+    except InitDataError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    return user["id"]
+
+
+@app.get("/api/admin/stats")
+async def api_admin_stats(x_telegram_init_data: str = Header(default="")):
+    telegram_id = await get_telegram_id(x_telegram_init_data)
+    # Faqat admin ko'ra oladi
+    if not ADMIN_TELEGRAM_ID or str(telegram_id) != str(ADMIN_TELEGRAM_ID):
+        raise HTTPException(status_code=403, detail="Ruxsat yo'q")
+    return await db.get_admin_stats()
+
+
+@app.get("/api/admin/check")
+async def api_admin_check(x_telegram_init_data: str = Header(default="")):
+    """Foydalanuvchi admin ekanligini tekshiradi (Ko'proq bo'limida admin tugmasini ko'rsatish uchun)."""
+    telegram_id = await get_telegram_id(x_telegram_init_data)
+    is_admin = bool(ADMIN_TELEGRAM_ID) and str(telegram_id) == str(ADMIN_TELEGRAM_ID)
+    return {"is_admin": is_admin}
+
+
 # ---------------- Frontend ----------------
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 app.mount("/assets", StaticFiles(directory=STATIC_DIR), name="assets")
@@ -277,29 +360,115 @@ app.mount("/assets", StaticFiles(directory=STATIC_DIR), name="assets")
 
 @app.get("/")
 async def serve_index():
-    return FileResponse(os.path.join(STATIC_DIR, "index.html"))
+    return FileResponse(
+        os.path.join(STATIC_DIR, "index.html"),
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+    )
 
 
 async def run_bot():
-    from aiogram import Bot, Dispatcher
-    from aiogram.filters import CommandStart
-    from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+    import time
+    from aiogram import Bot, Dispatcher, F
+    from aiogram.filters import CommandStart, Command
+    from aiogram.types import (
+        Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton,
+        WebAppInfo, BufferedInputFile,
+    )
+    import excel_export
 
     webapp_url = os.getenv("WEBAPP_URL", "")
+    admin_id = os.getenv("ADMIN_TELEGRAM_ID", "")
+    version_tag = str(int(time.time()))
+    if webapp_url:
+        separator = "&" if "?" in webapp_url else "?"
+        webapp_url_versioned = f"{webapp_url}{separator}v={version_tag}"
+    else:
+        webapp_url_versioned = webapp_url
+
     bot = Bot(token=BOT_TOKEN)
     dp = Dispatcher()
 
+    def is_admin(message_or_cb) -> bool:
+        return admin_id and str(message_or_cb.from_user.id) == str(admin_id)
+
     @dp.message(CommandStart())
     async def start(message: Message):
-        if webapp_url:
+        if webapp_url_versioned:
             kb = InlineKeyboardMarkup(
-                inline_keyboard=[[InlineKeyboardButton(text="Ochish", web_app=WebAppInfo(url=webapp_url))]]
+                inline_keyboard=[[InlineKeyboardButton(text="Ochish", web_app=WebAppInfo(url=webapp_url_versioned))]]
             )
             await message.answer(
                 "Assalomu alaykum! Fura reyslaringizni shu yerdan boshqaring:", reply_markup=kb
             )
         else:
             await message.answer("Bot sozlanmoqda, WEBAPP_URL hali berilmagan.")
+
+    def admin_menu() -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📊 Umumiy statistika", callback_data="admin_stats")],
+            [InlineKeyboardButton(text="👤 Foydalanuvchilar (Excel)", callback_data="admin_users")],
+            [InlineKeyboardButton(text="🚛 Moshinalar (Excel)", callback_data="admin_trucks")],
+            [InlineKeyboardButton(text="🧭 Reyslar (Excel)", callback_data="admin_trips")],
+        ])
+
+    @dp.message(Command("admin"))
+    async def admin_panel(message: Message):
+        if not is_admin(message):
+            return  # admin bo'lmasa, javob bermaydi (buyruq mavjudligini oshkor qilmaslik uchun)
+        await message.answer(
+            "🛠 <b>Admin panel</b>\nKerakli bo'limni tanlang:",
+            reply_markup=admin_menu(),
+            parse_mode="HTML",
+        )
+
+    @dp.callback_query(F.data == "admin_stats")
+    async def cb_stats(callback: CallbackQuery):
+        if not is_admin(callback):
+            await callback.answer("Ruxsat yo'q", show_alert=True)
+            return
+        s = await db.get_admin_stats()
+        text = (
+            "📊 <b>Umumiy statistika</b>\n\n"
+            f"👤 Foydalanuvchilar: <b>{s['total_users']}</b>\n"
+            f"🚛 Furalar: <b>{s['total_trucks']}</b>\n"
+            f"🧭 Reyslar: <b>{s['total_trips']}</b> (faol: {s['active_trips']})\n"
+            f"🔥 So'nggi 7 kunda faol: <b>{s['active_users_7d']}</b>"
+        )
+        await callback.message.answer(text, parse_mode="HTML")
+        await callback.answer()
+
+    @dp.callback_query(F.data == "admin_users")
+    async def cb_users(callback: CallbackQuery):
+        if not is_admin(callback):
+            await callback.answer("Ruxsat yo'q", show_alert=True)
+            return
+        rows = await db.admin_users_rows()
+        data = excel_export.make_users_excel(rows)
+        file = BufferedInputFile(data, filename="foydalanuvchilar.xlsx")
+        await callback.message.answer_document(file, caption="👤 Foydalanuvchilar ro'yxati")
+        await callback.answer()
+
+    @dp.callback_query(F.data == "admin_trucks")
+    async def cb_trucks(callback: CallbackQuery):
+        if not is_admin(callback):
+            await callback.answer("Ruxsat yo'q", show_alert=True)
+            return
+        rows = await db.admin_trucks_rows()
+        data = excel_export.make_trucks_excel(rows)
+        file = BufferedInputFile(data, filename="moshinalar.xlsx")
+        await callback.message.answer_document(file, caption="🚛 Moshinalar ro'yxati")
+        await callback.answer()
+
+    @dp.callback_query(F.data == "admin_trips")
+    async def cb_trips(callback: CallbackQuery):
+        if not is_admin(callback):
+            await callback.answer("Ruxsat yo'q", show_alert=True)
+            return
+        rows = await db.admin_trips_rows()
+        data = excel_export.make_trips_excel(rows)
+        file = BufferedInputFile(data, filename="reyslar.xlsx")
+        await callback.message.answer_document(file, caption="🧭 Reyslar ro'yxati")
+        await callback.answer()
 
     await db.init_db()
     await dp.start_polling(bot)

@@ -505,7 +505,7 @@ const TR = {
   "Turi": "Тури",
   "Extiyot qismlari": "Эҳтиёт қисмлари",
   "Boshqa": "Бошқа",
-  "Summasi (so'm)": "Суммаси (сўм)",
+  "Summasi ($)": "Суммаси ($)",
   "Izoh (ixtiyoriy)": "Изоҳ (ихтиёрий)",
   "Orqaga": "Орқага",
   "Summani kiriting": "Суммани киритинг",
@@ -562,7 +562,7 @@ const TR = {
   "Safar qo'shish": "Сафар қўшиш",
   "Qayerdan": "Қаердан",
   "Qayerga": "Қаерга",
-  "Narxi (so'm)": "Нархи (сўм)",
+  "Narxi ($)": "Нархи ($)",
   "Yo'nalishni kiriting": "Йўналишни киритинг",
   "Narxni kiriting": "Нархни киритинг",
   "Safar qo'shildi": "Сафар қўшилди",
@@ -579,9 +579,6 @@ const TR = {
   "Bu fura uchun allaqachon faol reys bor": "Бу фура учун аллақачон фаол рейс бор",
 
   "Til": "Тил",
-  "Valyuta": "Валюта",
-  "Kurs taxminiy: 1 USD ~ 12 000 so'm. Barcha ma'lumot so'mda saqlanadi, faqat ko'rinishi o'zgaradi.":
-    "Курс тахминий: 1 USD ~ 12 000 сўм. Барча маълумот сўмда сақланади, фақат кўриниши ўзгаради.",
   "Ilova tilini tanlang": "Ilova tilini tanlang",
   "Qo'llab-quvvatlash": "Қўллаб-қувватлаш",
   "Bu bot mustaqil ishlab chiqilgan va bepul taqdim etiladi. Agar foydali deb topsangiz, rivojlantirishni qo'llab-quvvatlashingiz mumkin.":
@@ -633,26 +630,11 @@ function escapeHtml(s) {
 }
 
 // Taxminiy kurs (qo'lda belgilangan, real vaqtda yangilanmaydi)
-const EXCHANGE_RATE_USD = 12000; // 1 USD ~ shuncha so'm
-let currentCurrency = localStorage.getItem("fura_currency") || "UZS";
-
-function setCurrency(cur) {
-  currentCurrency = cur;
-  localStorage.setItem("fura_currency", cur);
-  renderPage(state.page);
-}
-
 function formatSum(n) {
-  const num = Math.round(Number(n) || 0);
-  if (currentCurrency === "USD") {
-    const usd = num / EXCHANGE_RATE_USD;
-    const sign = usd < 0 ? "-" : "";
-    return sign + "$" + Math.abs(usd).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  }
+  const num = Number(n) || 0;
   const sign = num < 0 ? "-" : "";
-  const abs = Math.abs(num).toString();
-  const withSpaces = abs.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
-  return sign + withSpaces + " so'm";
+  const formatted = Math.abs(num).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return sign + "$" + formatted;
 }
 
 function showToast(msg) {
@@ -856,7 +838,7 @@ function openAddTruckExpenseSheet(truckId) {
       </select>
     </div>
     <div class="field">
-      <label>${tr("Summasi (so'm)")}</label>
+      <label>${tr("Summasi ($)")}</label>
       <input type="text" inputmode="decimal" id="truck-exp-amount" placeholder="0">
     </div>
     <div class="field">
@@ -877,7 +859,7 @@ async function submitAddTruckExpense(truckId) {
   if (!amount || amount <= 0) return showToast(tr("Summani kiriting"));
   try {
     await api(`/api/trucks/${truckId}/expenses`, {
-      method: "POST", body: JSON.stringify({ category, amount, note })
+      method: "POST", body: JSON.stringify({ category, amount, note, currency: "USD" })
     });
     await loadAll();
     renderTrucks();
@@ -1179,7 +1161,7 @@ function openAddExpenseSheet() {
       </select>
     </div>
     <div class="field">
-      <label>${tr("Summasi (so'm)")}</label>
+      <label>${tr("Summasi ($)")}</label>
       <input type="text" inputmode="decimal" id="exp-amount" placeholder="0">
     </div>
     <div class="field">
@@ -1201,7 +1183,7 @@ async function submitAddExpense() {
   const tripId = state.selectedExpenseTripId || state.activeTrips[0].id;
   try {
     await api(`/api/trips/${tripId}/expenses`, {
-      method: "POST", body: JSON.stringify({ category, amount, note })
+      method: "POST", body: JSON.stringify({ category, amount, note, currency: "USD" })
     });
     closeSheet();
     await loadAll();
@@ -1283,7 +1265,7 @@ function openAddLegSheet() {
       <input type="text" id="leg-to" placeholder="Masalan: Samarqand">
     </div>
     <div class="field">
-      <label>${tr("Narxi (so'm)")}</label>
+      <label>${tr("Narxi ($)")}</label>
       <input type="text" inputmode="decimal" id="leg-price" placeholder="0">
     </div>
     <div class="sheet-actions">
@@ -1302,7 +1284,7 @@ async function submitAddLeg() {
   const tripId = state.selectedLegTripId || state.activeTrips[0].id;
   try {
     await api(`/api/trips/${tripId}/legs`, {
-      method: "POST", body: JSON.stringify({ from_point, to_point, price })
+      method: "POST", body: JSON.stringify({ from_point, to_point, price, currency: "USD" })
     });
     closeSheet();
     await loadAll();
@@ -1385,13 +1367,6 @@ function renderMore() {
       <button class="lang-btn ${currentLang === "lotin" ? "active" : ""}" onclick="setLanguage('lotin')">Lotin</button>
       <button class="lang-btn ${currentLang === "kirill" ? "active" : ""}" onclick="setLanguage('kirill')">Кирилл</button>
     </div>
-
-    <div class="section-title">${tr("Valyuta")}</div>
-    <div class="lang-switch">
-      <button class="lang-btn ${currentCurrency === "UZS" ? "active" : ""}" onclick="setCurrency('UZS')">UZS</button>
-      <button class="lang-btn ${currentCurrency === "USD" ? "active" : ""}" onclick="setCurrency('USD')">USD</button>
-    </div>
-    <p style="color: var(--hint); font-size: 12px; margin: -12px 0 22px 2px;">${tr("Kurs taxminiy: 1 USD ~ 12 000 so'm. Barcha ma'lumot so'mda saqlanadi, faqat ko'rinishi o'zgaradi.")}</p>
 
     <div class="section-title">${tr("Qo'llab-quvvatlash")}</div>
     <div class="support-card">
