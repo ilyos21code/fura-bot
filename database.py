@@ -133,6 +133,13 @@ async def get_or_create_user(telegram_id: int, full_name: str = "") -> int:
 # ---------------- Trucks ----------------
 async def add_truck(user_id: int, name: str) -> int:
     async with aiosqlite.connect(DB_PATH) as conn:
+        # Bir xil nomli fura allaqachon bor bo'lsa, yangisini qo'shmaymiz (takrorlanishning oldini olish)
+        cur = await conn.execute(
+            "SELECT id FROM trucks WHERE user_id=? AND name=?", (user_id, name)
+        )
+        existing = await cur.fetchone()
+        if existing:
+            return existing[0]
         cur = await conn.execute(
             "INSERT INTO trucks (user_id, name) VALUES (?, ?)", (user_id, name)
         )

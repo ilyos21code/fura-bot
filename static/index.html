@@ -775,16 +775,27 @@ function openAddTruckSheet() {
   `);
 }
 
+let isSubmitting = false;
+
 async function submitAddTruck() {
+  if (isSubmitting) return;
   const name = document.getElementById("truck-name").value.trim();
   if (!name) return showToast(tr("Nom kiriting"));
+  isSubmitting = true;
+  const btn = document.querySelector("#sheet-content .btn-primary");
+  if (btn) { btn.disabled = true; btn.style.opacity = "0.6"; }
   try {
     await api("/api/trucks", { method: "POST", body: JSON.stringify({ name }) });
     closeSheet();
     await loadAll();
     renderTrucks();
     showToast(tr("Fura qo'shildi"));
-  } catch (e) { showToast(tr(e.message)); }
+  } catch (e) {
+    showToast(tr(e.message));
+    if (btn) { btn.disabled = false; btn.style.opacity = "1"; }
+  } finally {
+    isSubmitting = false;
+  }
 }
 
 async function openTruckDetail(truckId) {
@@ -853,10 +864,14 @@ function openAddTruckExpenseSheet(truckId) {
 }
 
 async function submitAddTruckExpense(truckId) {
+  if (isSubmitting) return;
   const category = document.getElementById("truck-exp-category").value;
   const amount = parseFloat(document.getElementById("truck-exp-amount").value.replace(",", ".").replace(/\s/g, ""));
   const note = document.getElementById("truck-exp-note").value.trim();
   if (!amount || amount <= 0) return showToast(tr("Summani kiriting"));
+  isSubmitting = true;
+  const btn = document.querySelector("#sheet-content .btn-primary");
+  if (btn) { btn.disabled = true; btn.style.opacity = "0.6"; }
   try {
     await api(`/api/trucks/${truckId}/expenses`, {
       method: "POST", body: JSON.stringify({ category, amount, note, currency: "USD" })
@@ -865,7 +880,12 @@ async function submitAddTruckExpense(truckId) {
     renderTrucks();
     showToast(tr("Xarajat qo'shildi"));
     openTruckDetail(truckId);
-  } catch (e) { showToast(tr(e.message)); }
+  } catch (e) {
+    showToast(tr(e.message));
+    if (btn) { btn.disabled = false; btn.style.opacity = "1"; }
+  } finally {
+    isSubmitting = false;
+  }
 }
 
 async function confirmDeleteTruck(truckId) {
@@ -968,14 +988,23 @@ function openAddTripSheet() {
 }
 
 async function submitAddTrip() {
+  if (isSubmitting) return;
   const truckId = Number(document.getElementById("trip-truck-id").value);
+  isSubmitting = true;
+  const btn = document.querySelector("#sheet-content .btn-primary");
+  if (btn) { btn.disabled = true; btn.style.opacity = "0.6"; }
   try {
     await api("/api/trips", { method: "POST", body: JSON.stringify({ truck_id: truckId }) });
     closeSheet();
     await loadAll();
     renderTrips();
     showToast(tr("Reys boshlandi"));
-  } catch (e) { showToast(tr(e.message)); }
+  } catch (e) {
+    showToast(tr(e.message));
+    if (btn) { btn.disabled = false; btn.style.opacity = "1"; }
+  } finally {
+    isSubmitting = false;
+  }
 }
 
 async function openTripDetail(tripId) {
@@ -1176,11 +1205,15 @@ function openAddExpenseSheet() {
 }
 
 async function submitAddExpense() {
+  if (isSubmitting) return;
   const category = document.getElementById("exp-category").value;
   const amount = parseFloat(document.getElementById("exp-amount").value.replace(",", ".").replace(/\s/g, ""));
   const note = document.getElementById("exp-note").value.trim();
   if (!amount || amount <= 0) return showToast(tr("Summani kiriting"));
   const tripId = state.selectedExpenseTripId || state.activeTrips[0].id;
+  isSubmitting = true;
+  const btn = document.querySelector("#sheet-content .btn-primary");
+  if (btn) { btn.disabled = true; btn.style.opacity = "0.6"; }
   try {
     await api(`/api/trips/${tripId}/expenses`, {
       method: "POST", body: JSON.stringify({ category, amount, note, currency: "USD" })
@@ -1189,7 +1222,12 @@ async function submitAddExpense() {
     await loadAll();
     renderExpenses();
     showToast(tr("Xarajat qo'shildi"));
-  } catch (e) { showToast(tr(e.message)); }
+  } catch (e) {
+    showToast(tr(e.message));
+    if (btn) { btn.disabled = false; btn.style.opacity = "1"; }
+  } finally {
+    isSubmitting = false;
+  }
 }
 
 // ---------------- SAFARLAR (faol reys) ----------------
@@ -1276,12 +1314,16 @@ function openAddLegSheet() {
 }
 
 async function submitAddLeg() {
+  if (isSubmitting) return;
   const from_point = document.getElementById("leg-from").value.trim();
   const to_point = document.getElementById("leg-to").value.trim();
   const price = parseFloat(document.getElementById("leg-price").value.replace(",", ".").replace(/\s/g, ""));
   if (!from_point || !to_point) return showToast(tr("Yo'nalishni kiriting"));
   if (!price || price <= 0) return showToast(tr("Narxni kiriting"));
   const tripId = state.selectedLegTripId || state.activeTrips[0].id;
+  isSubmitting = true;
+  const btn = document.querySelector("#sheet-content .btn-primary");
+  if (btn) { btn.disabled = true; btn.style.opacity = "0.6"; }
   try {
     await api(`/api/trips/${tripId}/legs`, {
       method: "POST", body: JSON.stringify({ from_point, to_point, price, currency: "USD" })
@@ -1290,7 +1332,12 @@ async function submitAddLeg() {
     await loadAll();
     renderLegs();
     showToast(tr("Safar qo'shildi"));
-  } catch (e) { showToast(tr(e.message)); }
+  } catch (e) {
+    showToast(tr(e.message));
+    if (btn) { btn.disabled = false; btn.style.opacity = "1"; }
+  } finally {
+    isSubmitting = false;
+  }
 }
 
 // ---------------- HISOBOT ----------------
