@@ -586,6 +586,12 @@ const TR = {
   "Havola orqali qo'llab-quvvatlash": "Ҳавола орқали қўллаб-қувватлаш",
   "Nusxalash": "Нусхалаш",
   "Nusxalandi": "Нусхаланди",
+  "Do'stlarga ulashish": "Дўстларга улашиш",
+  "Do'stga ulashish": "Дўстга улашиш",
+  "Bot foydali bo'lsa, fura egasi do'stlaringizga ham ulashing — ular ham reyslarini oson hisoblashsin.":
+    "Бот фойдали бўлса, фура эгаси дўстларингизга ҳам улашинг — улар ҳам рейсларини осон ҳисоблашсин.",
+  "DEPO HisobKitob — fura reyslari, xarajat va foydani avtomatik hisoblaydigan bepul bot. Sinab ko'ring:":
+    "DEPO HisobKitob — фура рейслари, харажат ва фойдани автоматик ҳисоблайдиган бепул бот. Синаб кўринг:",
   "Rahmat!": "Раҳмат!",
 };
 
@@ -1415,6 +1421,13 @@ function renderMore() {
       <button class="lang-btn ${currentLang === "kirill" ? "active" : ""}" onclick="setLanguage('kirill')">Кирилл</button>
     </div>
 
+    <div class="section-title">${tr("Do'stlarga ulashish")}</div>
+    <div class="support-card">
+      <div class="glyph">🚛</div>
+      <p>${tr("Bot foydali bo'lsa, fura egasi do'stlaringizga ham ulashing — ular ham reyslarini oson hisoblashsin.")}</p>
+      <button class="support-btn" onclick="shareBot()">${tr("Do'stga ulashish")}</button>
+    </div>
+
     <div class="section-title">${tr("Qo'llab-quvvatlash")}</div>
     <div class="support-card">
       <div class="glyph">☕</div>
@@ -1426,6 +1439,17 @@ function renderMore() {
       <button class="support-btn" onclick="copySupportCard()">${tr("Nusxalash")}</button>
     </div>
   `;
+}
+
+function shareBot() {
+  const botUrl = "https://t.me/depohisobkitobbot";
+  const shareText = tr("DEPO HisobKitob — fura reyslari, xarajat va foydani avtomatik hisoblaydigan bepul bot. Sinab ko'ring:");
+  const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(botUrl)}&text=${encodeURIComponent(shareText)}`;
+  if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.openTelegramLink) {
+    window.Telegram.WebApp.openTelegramLink(shareUrl);
+  } else {
+    window.open(shareUrl, "_blank");
+  }
 }
 
 function copySupportCard() {

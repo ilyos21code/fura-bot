@@ -1,6 +1,8 @@
+import os
+
 import aiosqlite
 
-DB_PATH = "fura.db"
+DB_PATH = os.getenv("DB_PATH", "fura.db")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
@@ -169,9 +171,53 @@ async def get_truck(user_id: int, truck_id: int):
 
 async def delete_truck(user_id: int, truck_id: int):
     async with aiosqlite.connect(DB_PATH) as conn:
+        # Furaning egasini tekshiramiz
+        cur = await conn.execute("SELECT id FROM trucks WHERE id=? AND user_id=?", (truck_id, user_id))
+        if not await cur.fetchone():
+            return
+        # Furaning barcha reyslari ID sini olamiz
+        cur = await conn.execute("SELECT id FROM trips WHERE truck_id=? AND user_id=?", (truck_id, user_id))
+        trip_ids = [row[0] for row in await cur.fetchall()]
+        # Har bir reysning safar va xarajatlarini o'chiramiz
+        for tid in trip_ids:
+            await conn.execute("DELETE FROM trip_expenses WHERE trip_id=?", (tid,))
+            await conn.execute("DELETE FROM trip_legs WHERE trip_id=?", (tid,))
+        # Reyslarni o'chiramiz
+        await conn.execute("DELETE FROM trips WHERE truck_id=? AND user_id=?", (truck_id, user_id))
+        # Furaning ta'mirlash xarajatlarini o'chiramiz
         await conn.execute("DELETE FROM truck_expenses WHERE truck_id=?", (truck_id,))
+        # Furani o'chiramiz
         await conn.execute("DELETE FROM trucks WHERE id=? AND user_id=?", (truck_id, user_id))
         await conn.commit()
+
+
+async def cleanup_orphans(user_id: int):
+    """Egasiz (mashinasi o'chirilgan) reys/safar/xarajatlarni tozalaydi."""
+    async with aiosqlite.connect(DB_PATH) as conn:
+        # Bu foydalanuvchining mavjud fura ID lari
+        cur = await conn.execute("SELECT id FROM trucks WHERE user_id=?", (user_id,))
+        valid_truck_ids = [row[0] for row in await cur.fetchall()]
+
+        # Bu foydalanuvchining reyslari orasidan, furasi mavjud bo'lmaganini topamiz
+        cur = await conn.execute("SELECT id, truck_id FROM trips WHERE user_id=?", (user_id,))
+        all_trips = await cur.fetchall()
+        orphan_trip_ids = [tid for tid, truck_id in all_trips if truck_id not in valid_truck_ids]
+
+        for tid in orphan_trip_ids:
+            await conn.execute("DELETE FROM trip_expenses WHERE trip_id=?", (tid,))
+            await conn.execute("DELETE FROM trip_legs WHERE trip_id=?", (tid,))
+            await conn.execute("DELETE FROM trips WHERE id=?", (tid,))
+
+        # Egasiz ta'mirlash xarajatlari (furasi o'chirilgan)
+        if valid_truck_ids:
+            placeholders = ",".join("?" * len(valid_truck_ids))
+            await conn.execute(
+                f"""DELETE FROM truck_expenses WHERE truck_id NOT IN ({placeholders})
+                    AND truck_id IN (SELECT id FROM trucks)""",
+                valid_truck_ids,
+            )
+        await conn.commit()
+        return len(orphan_trip_ids)
 
 
 async def add_truck_expense(truck_id: int, category: str, amount: float, currency: str = "UZS", rate: float = 1, note: str = ""):
@@ -342,15 +388,15 @@ async def get_report(user_id: int):
     async with aiosqlite.connect(DB_PATH) as conn:
         cur = await conn.execute(
             """SELECT COALESCE(SUM(CASE WHEN currency='USD' THEN price*rate ELSE price END),0) FROM trip_legs
-               WHERE trip_id IN (SELECT id FROM trips WHERE user_id=?)""",
-            (user_id,),
+               WHERE trip_id IN (SELECT id FROM trips WHERE user_id=? AND truck_id IN (SELECT id FROM trucks WHERE user_id=?))""",
+            (user_id, user_id),
         )
         total_income = (await cur.fetchone())[0]
 
         cur = await conn.execute(
             """SELECT COALESCE(SUM(CASE WHEN currency='USD' THEN amount*rate ELSE amount END),0) FROM trip_expenses
-               WHERE trip_id IN (SELECT id FROM trips WHERE user_id=?)""",
-            (user_id,),
+               WHERE trip_id IN (SELECT id FROM trips WHERE user_id=? AND truck_id IN (SELECT id FROM trucks WHERE user_id=?))""",
+            (user_id, user_id),
         )
         total_trip_expense = (await cur.fetchone())[0]
 
@@ -367,9 +413,9 @@ async def get_report(user_id: int):
                       COALESCE((SELECT SUM(CASE WHEN currency='USD' THEN amount*rate ELSE amount END) FROM trip_expenses WHERE trip_id=tr.id),0) as expense
                FROM trips tr
                LEFT JOIN trip_legs l ON l.trip_id = tr.id
-               WHERE tr.user_id=?
+               WHERE tr.user_id=? AND tr.truck_id IN (SELECT id FROM trucks WHERE user_id=?)
                GROUP BY month ORDER BY month DESC""",
-            (user_id,),
+            (user_id, user_id),
         )
         by_month = await cur.fetchall()
 

@@ -319,6 +319,8 @@ async def api_delete_trip_leg(
 @app.get("/api/report")
 async def api_report(x_telegram_init_data: str = Header(default="")):
     user_id = await get_user_id(x_telegram_init_data)
+    # Hisobot so'ralganda avval egasiz (mashinasi o'chirilgan) ma'lumotlarni tozalaymiz
+    await db.cleanup_orphans(user_id)
     return await db.get_report(user_id)
 
 
@@ -395,10 +397,17 @@ async def run_bot():
     async def start(message: Message):
         if webapp_url_versioned:
             kb = InlineKeyboardMarkup(
-                inline_keyboard=[[InlineKeyboardButton(text="Ochish", web_app=WebAppInfo(url=webapp_url_versioned))]]
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="🚛 Ochish", web_app=WebAppInfo(url=webapp_url_versioned))],
+                    [InlineKeyboardButton(text="📖 Video yo'riqnoma", url="https://t.me/depohisobkitobchat/3")],
+                ]
             )
             await message.answer(
-                "Assalomu alaykum! Fura reyslaringizni shu yerdan boshqaring:", reply_markup=kb
+                "Assalomu alaykum! 👋\n\n"
+                "DEPO HisobKitob — fura reyslari, xarajat va foydangizni avtomatik hisoblaydi.\n\n"
+                "🚛 Boshlash uchun \"Ochish\" tugmasini bosing.\n"
+                "📖 Qanday ishlatishni bilmasangiz — video yo'riqnomani ko'ring.",
+                reply_markup=kb,
             )
         else:
             await message.answer("Bot sozlanmoqda, WEBAPP_URL hali berilmagan.")
