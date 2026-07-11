@@ -26,7 +26,7 @@ def make_users_excel(rows) -> bytes:
     wb = Workbook()
     ws = wb.active
     ws.title = "Foydalanuvchilar"
-    headers = ["ID", "Ismi", "Telegram ID", "Furalar", "Reyslar", "Daromad ($)", "Reys xarajati", "Ta'mirlash", "Sof foyda ($)"]
+    headers = ["ID", "Ismi", "Telegram ID", "Furalar", "Reyslar", "Daromad (so'm)", "Reys xarajati", "Ta'mirlash", "Sof foyda (so'm)"]
     ws.append(headers)
     for r in rows:
         uid, name, tg, trucks, trips, income, trip_exp, repair = r
@@ -42,7 +42,7 @@ def make_trucks_excel(rows) -> bytes:
     wb = Workbook()
     ws = wb.active
     ws.title = "Moshinalar"
-    headers = ["ID", "Nomi", "Egasi", "Telegram ID", "Qo'shilgan sana", "Ta'mirlash ($)"]
+    headers = ["ID", "Nomi", "Egasi", "Telegram ID", "Qo'shilgan sana", "Ta'mirlash (so'm)"]
     ws.append(headers)
     for r in rows:
         tid, name, owner, tg, created, repair = r
@@ -57,7 +57,7 @@ def make_trips_excel(rows) -> bytes:
     wb = Workbook()
     ws = wb.active
     ws.title = "Reyslar"
-    headers = ["ID", "Fura", "Egasi", "Holati", "Boshlangan", "Tugagan", "Daromad ($)", "Xarajat ($)", "Foyda ($)"]
+    headers = ["ID", "Fura", "Egasi", "Holati", "Boshlangan", "Tugagan", "Daromad (so'm)", "Xarajat (so'm)", "Foyda (so'm)"]
     ws.append(headers)
     for r in rows:
         tid, truck, owner, status, created, finished, income, expense = r

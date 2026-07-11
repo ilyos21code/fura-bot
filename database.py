@@ -1,8 +1,6 @@
-import os
-
 import aiosqlite
 
-DB_PATH = os.getenv("DB_PATH", "fura.db")
+DB_PATH = "fura.db"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
@@ -116,6 +114,21 @@ async def get_setting(key: str, default: str = None):
         cur = await conn.execute("SELECT value FROM settings WHERE key=?", (key,))
         row = await cur.fetchone()
         return row[0] if row else default
+
+
+async def fix_legacy_usd_rates(current_rate: float):
+    """Eski davrda (bot faqat USD da ishlaganda) yozuvlar rate=1 bilan saqlangan.
+    Ularga joriy kursni beramiz — bir martalik tuzatish. Yangi yozuvlar
+    doim o'z kiritilgan paytdagi kursi bilan saqlanadi."""
+    if not current_rate or current_rate <= 1:
+        return
+    async with aiosqlite.connect(DB_PATH) as conn:
+        for table, col in (("truck_expenses", "amount"), ("trip_expenses", "amount"), ("trip_legs", "price")):
+            await conn.execute(
+                f"UPDATE {table} SET rate=? WHERE currency='USD' AND rate<=1",
+                (current_rate,),
+            )
+        await conn.commit()
 
 
 async def get_or_create_user(telegram_id: int, full_name: str = "") -> int:
@@ -457,6 +470,14 @@ async def get_truck_name(truck_id: int) -> str:
         cur = await conn.execute("SELECT name FROM trucks WHERE id=?", (truck_id,))
         row = await cur.fetchone()
         return row[0] if row else "Noma'lum fura"
+
+
+async def get_all_telegram_ids():
+    """Broadcast uchun: barcha foydalanuvchilarning telegram ID lari."""
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cur = await conn.execute("SELECT telegram_id FROM users")
+        rows = await cur.fetchall()
+        return [r[0] for r in rows]
 
 
 # ---------------- Admin statistika ----------------

@@ -506,6 +506,12 @@ const TR = {
   "Extiyot qismlari": "Эҳтиёт қисмлари",
   "Boshqa": "Бошқа",
   "Summasi ($)": "Суммаси ($)",
+  "Summasi": "Суммаси",
+  "Narxi": "Нархи",
+  "so'm": "сўм",
+  "Valyuta (ko'rinish)": "Валюта (кўриниш)",
+  "Joriy kurs": "Жорий курс",
+  "Markaziy bank": "Марказий банк",
   "Izoh (ixtiyoriy)": "Изоҳ (ихтиёрий)",
   "Orqaga": "Орқага",
   "Summani kiriting": "Суммани киритинг",
@@ -635,12 +641,71 @@ function escapeHtml(s) {
   }[c]));
 }
 
-// Taxminiy kurs (qo'lda belgilangan, real vaqtda yangilanmaydi)
+// ---------------- VALYUTA TIZIMI ----------------
+// Backend barcha summalarni SO'MDA qaytaradi (har yozuv o'z muzlatilgan kursi bilan aylantirilgan).
+// displayCurrency - foydalanuvchi ko'rishni tanlagan valyuta (UZS yoki USD).
+// inputCurrency - oxirgi kiritish valyutasi (eslab qolinadi).
+// currentRate - joriy USD/UZS kursi (serverdan, cbu.uz).
+let displayCurrency = localStorage.getItem("depo_display_currency") || "UZS";
+let inputCurrency = localStorage.getItem("depo_input_currency") || "UZS";
+let currentRate = 12650; // server javobi kelguncha vaqtinchalik
+
+function setDisplayCurrency(cur) {
+  displayCurrency = cur;
+  localStorage.setItem("depo_display_currency", cur);
+  renderPage(state.page);
+}
+
+function setInputCurrency(cur) {
+  inputCurrency = cur;
+  localStorage.setItem("depo_input_currency", cur);
+  // Ochiq oynadagi tugmalarni yangilash
+  document.querySelectorAll(".cur-btn").forEach(b => {
+    b.classList.toggle("active", b.dataset.cur === cur);
+  });
+}
+
+function currencyToggleHtml() {
+  return `
+    <div class="lang-switch" style="margin-bottom:16px;">
+      <button type="button" class="lang-btn cur-btn ${inputCurrency === "UZS" ? "active" : ""}" data-cur="UZS" onclick="setInputCurrency('UZS')">so'm (UZS)</button>
+      <button type="button" class="lang-btn cur-btn ${inputCurrency === "USD" ? "active" : ""}" data-cur="USD" onclick="setInputCurrency('USD')">$ (USD)</button>
+    </div>`;
+}
+
+async function loadRate() {
+  try {
+    const r = await api("/api/rate");
+    if (r && r.usd && r.usd > 1000) currentRate = r.usd;
+  } catch (e) { /* kurs kelmasa, oxirgi qiymat ishlatiladi */ }
+}
+
+// n - SO'MDAGI qiymat. displayCurrency ga qarab ko'rsatadi.
 function formatSum(n) {
   const num = Number(n) || 0;
+  if (displayCurrency === "USD") {
+    const usd = num / currentRate;
+    const sign = usd < 0 ? "-" : "";
+    return sign + "$" + Math.abs(usd).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
   const sign = num < 0 ? "-" : "";
-  const formatted = Math.abs(num).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  return sign + "$" + formatted;
+  const abs = Math.round(Math.abs(num)).toString();
+  const withSpaces = abs.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  return sign + withSpaces + " " + tr("so'm");
+}
+
+// Element o'zining ASL kiritilgan valyutasida ko'rsatiladi
+// (masalan "$100" yoki "500 000 so'm" - qanday kiritilgan bo'lsa, shunday)
+function formatOriginal(amount, currency) {
+  const num = Number(amount) || 0;
+  if (currency === "USD") {
+    const sign = num < 0 ? "-" : "";
+    return sign + "$" + Math.abs(num).toLocaleString("en-US", { maximumFractionDigits: 2 });
+  }
+  const sign = num < 0 ? "-" : "";
+  const abs = Math.round(Math.abs(num)).toString();
+  const withSpaces = abs.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  return sign + withSpaces + " " + tr("so'm");
 }
 
 function showToast(msg) {
@@ -722,6 +787,7 @@ async function loadAll() {
   state.trips = trips;
   state.activeTrips = activeTrips;
   state.report = report;
+  loadRate(); // kursni fonda yangilaymiz (kutmasdan)
 
   // Tanlangan reys endi mavjud bo'lmasa yoki hali tanlanmagan bo'lsa - birinchisini tanlaymiz
   if (!state.activeTrips.find(t => t.id === state.selectedExpenseTripId)) {
@@ -815,7 +881,7 @@ async function openTruckDetail(truckId) {
           <div class="card-sub">${escapeHtml(e.created_at)}${e.note ? " · " + escapeHtml(e.note) : ""}</div>
         </div>
         <div class="amount-row">
-          <div class="card-amount">${formatSum(e.amount)}</div>
+          <div class="card-amount">${formatOriginal(e.amount, e.currency)}</div>
           <button class="mini-delete" onclick="deleteTruckExpense(${truckId}, ${e.id})">✕</button>
         </div>
       </div>
@@ -855,7 +921,8 @@ function openAddTruckExpenseSheet(truckId) {
       </select>
     </div>
     <div class="field">
-      <label>${tr("Summasi ($)")}</label>
+      <label>${tr("Summasi")}</label>
+      ${currencyToggleHtml()}
       <input type="text" inputmode="decimal" id="truck-exp-amount" placeholder="0">
     </div>
     <div class="field">
@@ -880,7 +947,7 @@ async function submitAddTruckExpense(truckId) {
   if (btn) { btn.disabled = true; btn.style.opacity = "0.6"; }
   try {
     await api(`/api/trucks/${truckId}/expenses`, {
-      method: "POST", body: JSON.stringify({ category, amount, note, currency: "USD" })
+      method: "POST", body: JSON.stringify({ category, amount, note, currency: inputCurrency })
     });
     await loadAll();
     renderTrucks();
@@ -1019,7 +1086,7 @@ async function openTripDetail(tripId) {
     <div class="card-row">
       <span>${escapeHtml(l.from_point)} → ${escapeHtml(l.to_point)}</span>
       <span class="amount-row">
-        <span>${formatSum(l.price)}</span>
+        <span>${formatOriginal(l.price, l.currency)}</span>
         <button class="mini-delete" onclick="deleteTripLeg(${tripId}, ${l.id})">✕</button>
       </span>
     </div>
@@ -1029,7 +1096,7 @@ async function openTripDetail(tripId) {
     <div class="card-row">
       <span>${escapeHtml(tr(e.category))}</span>
       <span class="amount-row">
-        <span>${formatSum(e.amount)}</span>
+        <span>${formatOriginal(e.amount, e.currency)}</span>
         <button class="mini-delete" onclick="deleteTripExpense(${tripId}, ${e.id})">✕</button>
       </span>
     </div>
@@ -1148,7 +1215,7 @@ async function renderExpenses() {
           <div class="card-sub">${escapeHtml(e.created_at)}${e.note ? " · " + escapeHtml(e.note) : ""}</div>
         </div>
         <div class="amount-row">
-          <div class="card-amount">${formatSum(e.amount)}</div>
+          <div class="card-amount">${formatOriginal(e.amount, e.currency)}</div>
           <button class="mini-delete" onclick="deleteExpenseFromList(${tripId}, ${e.id})">✕</button>
         </div>
       </div>
@@ -1196,7 +1263,8 @@ function openAddExpenseSheet() {
       </select>
     </div>
     <div class="field">
-      <label>${tr("Summasi ($)")}</label>
+      <label>${tr("Summasi")}</label>
+      ${currencyToggleHtml()}
       <input type="text" inputmode="decimal" id="exp-amount" placeholder="0">
     </div>
     <div class="field">
@@ -1222,7 +1290,7 @@ async function submitAddExpense() {
   if (btn) { btn.disabled = true; btn.style.opacity = "0.6"; }
   try {
     await api(`/api/trips/${tripId}/expenses`, {
-      method: "POST", body: JSON.stringify({ category, amount, note, currency: "USD" })
+      method: "POST", body: JSON.stringify({ category, amount, note, currency: inputCurrency })
     });
     closeSheet();
     await loadAll();
@@ -1262,7 +1330,7 @@ async function renderLegs() {
           <div class="card-sub">${escapeHtml(l.created_at)}</div>
         </div>
         <div class="amount-row">
-          <div class="card-amount">${formatSum(l.price)}</div>
+          <div class="card-amount">${formatOriginal(l.price, l.currency)}</div>
           <button class="mini-delete" onclick="deleteLegFromList(${tripId}, ${l.id})">✕</button>
         </div>
       </div>
@@ -1309,7 +1377,8 @@ function openAddLegSheet() {
       <input type="text" id="leg-to" placeholder="Masalan: Samarqand">
     </div>
     <div class="field">
-      <label>${tr("Narxi ($)")}</label>
+      <label>${tr("Narxi")}</label>
+      ${currencyToggleHtml()}
       <input type="text" inputmode="decimal" id="leg-price" placeholder="0">
     </div>
     <div class="sheet-actions">
@@ -1332,7 +1401,7 @@ async function submitAddLeg() {
   if (btn) { btn.disabled = true; btn.style.opacity = "0.6"; }
   try {
     await api(`/api/trips/${tripId}/legs`, {
-      method: "POST", body: JSON.stringify({ from_point, to_point, price, currency: "USD" })
+      method: "POST", body: JSON.stringify({ from_point, to_point, price, currency: inputCurrency })
     });
     closeSheet();
     await loadAll();
@@ -1420,6 +1489,15 @@ function renderMore() {
       <button class="lang-btn ${currentLang === "lotin" ? "active" : ""}" onclick="setLanguage('lotin')">Lotin</button>
       <button class="lang-btn ${currentLang === "kirill" ? "active" : ""}" onclick="setLanguage('kirill')">Кирилл</button>
     </div>
+
+    <div class="section-title">${tr("Valyuta (ko'rinish)")}</div>
+    <div class="lang-switch">
+      <button class="lang-btn ${displayCurrency === "UZS" ? "active" : ""}" onclick="setDisplayCurrency('UZS')">so'm (UZS)</button>
+      <button class="lang-btn ${displayCurrency === "USD" ? "active" : ""}" onclick="setDisplayCurrency('USD')">$ (USD)</button>
+    </div>
+    <p style="color: var(--hint); font-size: 12px; margin: -12px 0 22px 2px;">
+      ${tr("Joriy kurs")}: 1 USD = ${Math.round(currentRate).toLocaleString("en-US").replace(/,/g, " ")} ${tr("so'm")} (${tr("Markaziy bank")})
+    </p>
 
     <div class="section-title">${tr("Do'stlarga ulashish")}</div>
     <div class="support-card">

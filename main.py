@@ -152,7 +152,7 @@ async def api_add_truck_expense(
     truck = await db.get_truck(user_id, truck_id)
     if not truck:
         raise HTTPException(404, "Fura topilmadi")
-    usd_rate = 1  # bot hozircha faqat USD da ishlaydi
+    usd_rate = await get_usd_rate()
     expense_id = await db.add_truck_expense(truck_id, payload.category, payload.amount, payload.currency, usd_rate, payload.note)
     return {"id": expense_id}
 
@@ -271,7 +271,7 @@ async def api_add_trip_expense(
     trip = await db.get_trip(user_id, trip_id)
     if not trip:
         raise HTTPException(404, "Reys topilmadi")
-    usd_rate = 1  # bot hozircha faqat USD da ishlaydi
+    usd_rate = await get_usd_rate()
     expense_id = await db.add_trip_expense(trip_id, payload.category, payload.amount, payload.currency, usd_rate, payload.note)
     return {"id": expense_id}
 
@@ -296,7 +296,7 @@ async def api_add_trip_leg(
     trip = await db.get_trip(user_id, trip_id)
     if not trip:
         raise HTTPException(404, "Reys topilmadi")
-    usd_rate = 1  # bot hozircha faqat USD da ishlaydi
+    usd_rate = await get_usd_rate()
     leg_id = await db.add_trip_leg(
         trip_id, payload.from_point.strip(), payload.to_point.strip(), payload.price, payload.currency, usd_rate
     )
@@ -418,6 +418,7 @@ async def run_bot():
             [InlineKeyboardButton(text="👤 Foydalanuvchilar (Excel)", callback_data="admin_users")],
             [InlineKeyboardButton(text="🚛 Moshinalar (Excel)", callback_data="admin_trucks")],
             [InlineKeyboardButton(text="🧭 Reyslar (Excel)", callback_data="admin_trips")],
+            [InlineKeyboardButton(text="📣 Hammaga xabar yuborish", callback_data="admin_broadcast")],
         ])
 
     @dp.message(Command("admin"))
@@ -479,6 +480,84 @@ async def run_bot():
         await callback.message.answer_document(file, caption="🧭 Reyslar ro'yxati")
         await callback.answer()
 
+    # ---------------- BROADCAST (hammaga xabar) ----------------
+    # broadcast_state: {"waiting": True} - matn kutilyapti; {"text": "..."} - tasdiqlash kutilyapti
+    broadcast_state = {}
+
+    @dp.callback_query(F.data == "admin_broadcast")
+    async def cb_broadcast_start(callback: CallbackQuery):
+        if not is_admin(callback):
+            await callback.answer("Ruxsat yo'q", show_alert=True)
+            return
+        broadcast_state.clear()
+        broadcast_state["waiting"] = True
+        await callback.message.answer(
+            "📣 Barcha foydalanuvchilarga yuboriladigan xabar matnini yozing.\n\n"
+            "Bekor qilish uchun: /cancel"
+        )
+        await callback.answer()
+
+    @dp.message(Command("cancel"))
+    async def cancel_broadcast(message: Message):
+        if not is_admin(message):
+            return
+        if broadcast_state:
+            broadcast_state.clear()
+            await message.answer("❌ Bekor qilindi.")
+
+    @dp.callback_query(F.data == "broadcast_confirm")
+    async def cb_broadcast_confirm(callback: CallbackQuery):
+        if not is_admin(callback):
+            await callback.answer("Ruxsat yo'q", show_alert=True)
+            return
+        text = broadcast_state.get("text")
+        broadcast_state.clear()
+        if not text:
+            await callback.answer("Xabar topilmadi, qaytadan boshlang", show_alert=True)
+            return
+        await callback.answer()
+        ids = await db.get_all_telegram_ids()
+        await callback.message.answer(f"⏳ Yuborilmoqda... ({len(ids)} foydalanuvchi)")
+        sent, failed = 0, 0
+        for tid in ids:
+            try:
+                await bot.send_message(tid, text)
+                sent += 1
+            except Exception:
+                failed += 1  # botni bloklagan yoki o'chirilgan akkauntlar
+            await asyncio.sleep(0.05)  # Telegram limitiga rioya (soniyasiga ~20 xabar)
+        await callback.message.answer(
+            f"✅ Yuborildi: {sent} ta\n"
+            f"🚫 Yetmadi (bloklagan/o'chirilgan): {failed} ta"
+        )
+
+    @dp.callback_query(F.data == "broadcast_cancel")
+    async def cb_broadcast_cancel(callback: CallbackQuery):
+        if not is_admin(callback):
+            return
+        broadcast_state.clear()
+        await callback.message.answer("❌ Bekor qilindi.")
+        await callback.answer()
+
+    @dp.message(F.text & ~F.text.startswith("/"))
+    async def catch_broadcast_text(message: Message):
+        """Admin broadcast matnini kutayotgan holatda yozgan matnini ushlaydi."""
+        if not is_admin(message) or not broadcast_state.get("waiting"):
+            return
+        broadcast_state.clear()
+        broadcast_state["text"] = message.text
+        ids = await db.get_all_telegram_ids()
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text=f"✅ Yuborish ({len(ids)} kishiga)", callback_data="broadcast_confirm"),
+                InlineKeyboardButton(text="❌ Bekor", callback_data="broadcast_cancel"),
+            ]
+        ])
+        await message.answer(
+            "Quyidagi xabar yuboriladi:\n\n" + message.text + "\n\nTasdiqlaysizmi?",
+            reply_markup=kb,
+        )
+
     await db.init_db()
     await dp.start_polling(bot)
 
@@ -492,7 +571,16 @@ async def run_web():
 
 async def main():
     await db.init_db()
-    await asyncio.gather(run_web(), run_bot())
+    # Ishga tushishda darhol kursni olamiz (ishlamasa, bazadagi oxirgi kurs qoladi)
+    fetched = rate_module.fetch_usd_rate()
+    if fetched:
+        await db.set_setting("usd_rate", str(fetched))
+    # Eski davrdan qolgan USD yozuvlarni tuzatish: ular rate=1 bilan saqlangan
+    # (o'sha paytda bot faqat USD da ishlagan). Ularga joriy kursni beramiz,
+    # shunda so'mga aylantirish to'g'ri ishlaydi.
+    current = await get_usd_rate()
+    await db.fix_legacy_usd_rates(current)
+    await asyncio.gather(run_web(), run_bot(), update_rate_loop())
 
 
 if __name__ == "__main__":
