@@ -1,6 +1,10 @@
+import os
+
 import aiosqlite
 
-DB_PATH = "fura.db"
+# Railway'da doimiy volume yo'liga yo'naltiriladi: DB_PATH=/data/fura.db
+# Env berilmasa, lokal ishlash uchun "fura.db" ishlatiladi.
+DB_PATH = os.getenv("DB_PATH", "fura.db")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
