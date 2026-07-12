@@ -569,7 +569,23 @@ async def run_web():
     await server.serve()
 
 
+def _restore_seed_if_needed():
+    """Yangi serverga birinchi ko'chirishda: volume bo'sh bo'lsa, seed bazani
+    ko'chiradi. Baza allaqachon mavjud bo'lsa hech narsa qilmaydi (ma'lumot
+    ustidan yozib yubormaydi)."""
+    import shutil
+    seed = os.path.join(os.path.dirname(os.path.abspath(__file__)), "seed_fura.sqlite")
+    target = db.DB_PATH
+    if os.path.exists(seed) and not os.path.exists(target):
+        d = os.path.dirname(target)
+        if d:
+            os.makedirs(d, exist_ok=True)
+        shutil.copy(seed, target)
+        print(f"[SEED] Boshlang'ich baza ko'chirildi: {seed} -> {target}", flush=True)
+
+
 async def main():
+    _restore_seed_if_needed()
     await db.init_db()
     # Ishga tushishda darhol kursni olamiz (ishlamasa, bazadagi oxirgi kurs qoladi)
     fetched = rate_module.fetch_usd_rate()
