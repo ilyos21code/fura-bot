@@ -56,6 +56,37 @@ async def update_rate_loop():
         await asyncio.sleep(6 * 3600)
 
 
+async def daily_backup_loop():
+    """Har 24 soatda baza faylini adminga Telegram orqali yuboradi -
+    qo'shimcha himoya qatlami: server nima bo'lsa ham, admin qo'lida
+    har kungi zaxira nusxa bo'ladi."""
+    from aiogram import Bot
+    from aiogram.types import BufferedInputFile
+    from datetime import datetime
+
+    admin_id = os.getenv("ADMIN_TELEGRAM_ID", "")
+    if not admin_id:
+        logger.warning("ADMIN_TELEGRAM_ID yo'q - kunlik zaxira o'chirilgan")
+        return
+    backup_bot = Bot(token=BOT_TOKEN)
+    await asyncio.sleep(60)  # server to'liq ishga tushishini kutamiz
+    while True:
+        try:
+            if os.path.exists(db.DB_PATH):
+                with open(db.DB_PATH, "rb") as f:
+                    data = f.read()
+                stamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
+                file = BufferedInputFile(data, filename=f"zaxira_fura_{stamp}.db")
+                await backup_bot.send_document(
+                    admin_id, file,
+                    caption=f"🗄 Kunlik avtomatik zaxira ({stamp})\nBu faylni saqlab qo'ying.",
+                )
+                logger.info("Kunlik zaxira yuborildi")
+        except Exception as e:
+            logger.warning("Zaxira yuborishda xato: %s", e)
+        await asyncio.sleep(24 * 3600)
+
+
 async def get_user_id(x_telegram_init_data: str = Header(default="")) -> int:
     if DEV_MODE and not x_telegram_init_data:
         # Faqat lokal test uchun: haqiqiy Telegram ma'lumoti bo'lmasa ham ishlash imkonini beradi
@@ -596,7 +627,7 @@ async def main():
     # shunda so'mga aylantirish to'g'ri ishlaydi.
     current = await get_usd_rate()
     await db.fix_legacy_usd_rates(current)
-    await asyncio.gather(run_web(), run_bot(), update_rate_loop())
+    await asyncio.gather(run_web(), run_bot(), update_rate_loop(), daily_backup_loop())
 
 
 if __name__ == "__main__":

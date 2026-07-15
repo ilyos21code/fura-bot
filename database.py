@@ -225,14 +225,12 @@ async def cleanup_orphans(user_id: int):
             await conn.execute("DELETE FROM trip_legs WHERE trip_id=?", (tid,))
             await conn.execute("DELETE FROM trips WHERE id=?", (tid,))
 
-        # Egasiz ta'mirlash xarajatlari (furasi o'chirilgan)
-        if valid_truck_ids:
-            placeholders = ",".join("?" * len(valid_truck_ids))
-            await conn.execute(
-                f"""DELETE FROM truck_expenses WHERE truck_id NOT IN ({placeholders})
-                    AND truck_id IN (SELECT id FROM trucks)""",
-                valid_truck_ids,
-            )
+        # Chinakam egasiz ta'mirlash xarajatlari: furasi umuman mavjud bo'lmagan
+        # (o'chirilgan) yozuvlargina o'chiriladi. MUHIM: boshqa foydalanuvchilarning
+        # furalariga tegilmaydi - faqat trucks jadvalida umuman yo'q truck_id lar.
+        await conn.execute(
+            "DELETE FROM truck_expenses WHERE truck_id NOT IN (SELECT id FROM trucks)"
+        )
         await conn.commit()
         return len(orphan_trip_ids)
 
