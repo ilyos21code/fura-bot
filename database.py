@@ -672,3 +672,19 @@ async def get_trip_result_for_message(user_id: int, trip_id: int):
         if not row:
             return None
         return (income - expense, row[0], row[1])
+
+
+async def count_reminders():
+    """Diagnostika: qancha eslatma belgilangan (turi bo'yicha)."""
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cur = await conn.execute(
+            "SELECT kind, COUNT(*) FROM reminders GROUP BY kind"
+        )
+        return dict(await cur.fetchall())
+
+
+async def clear_reminders():
+    """Barcha eslatma belgilarini tozalaydi - hammasi qayta yuborilishi mumkin bo'ladi."""
+    async with aiosqlite.connect(DB_PATH) as conn:
+        await conn.execute("DELETE FROM reminders")
+        await conn.commit()

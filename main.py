@@ -56,19 +56,63 @@ async def update_rate_loop():
         await asyncio.sleep(6 * 3600)
 
 
-async def retention_loop():
-    """Qaytish eslatmalari: har 6 soatda tekshirib, kerakli foydalanuvchilarga
-    shaxsiy turtki yuboradi. Har eslatma turi bir marta yuboriladi (spam yo'q).
+async def _run_retention_once(r_bot, open_kb):
+    """Bitta retention tsikli. Qaytaradi: (nomzodA, yubA, nomzodB, yubB, xatolar).
+    MUHIM mantiq: faqat yuborilganda yoki foydalanuvchi botni bloklaganda
+    belgilanadi. Vaqtinchalik xatoda belgilanmaydi - keyingi tsiklda qayta uriniladi."""
+    from aiogram.exceptions import TelegramForbiddenError, TelegramBadRequest
 
-    A) 3+ kun ochiq, 3 kun jim reys -> "xarajatlaringizni kiritib qo'ydingizmi?"
-    B) Mashina qo'shgan, 2+ kun reys ochmagan -> "reys boshlash 10 soniya"
-    """
-    from aiogram import Bot
+    sent_a = sent_b = errors = 0
+
+    stale = await db.get_stale_open_trips()
+    for trip_id, tg_id, truck_name, days in stale:
+        try:
+            await r_bot.send_message(
+                tg_id,
+                f"🚛 {truck_name} bo'yicha reysingiz {days} kundan beri ochiq.\n\n"
+                f"Xarajatlaringizni kiritib qo'ydingizmi? Yo'lda yozib borsangiz, "
+                f"reys oxirida aniq sof foyda chiqadi 👇",
+                reply_markup=open_kb(),
+            )
+            await db.mark_reminded("stale_trip", trip_id)
+            sent_a += 1
+        except (TelegramForbiddenError, TelegramBadRequest):
+            # bloklagan yoki o'chirilgan akkaunt - qayta urinish foydasiz, belgilaymiz
+            await db.mark_reminded("stale_trip", trip_id)
+        except Exception as e:
+            errors += 1
+            logger.warning("Retention A yuborishda xato (tg=%s): %s", tg_id, e)
+        await asyncio.sleep(0.05)
+
+    idle = await db.get_users_with_truck_no_trip()
+    for user_id, tg_id in idle:
+        try:
+            await r_bot.send_message(
+                tg_id,
+                "Mashinangiz qo'shilgan, lekin birinchi reys hali boshlanmagan 🙂\n\n"
+                "Reys boshlash 10 soniya oladi — keyingi safaringizda sinab ko'ring: "
+                "daromad va xarajatni kiritsangiz, foydangiz o'zi hisoblanadi 👇",
+                reply_markup=open_kb(),
+            )
+            await db.mark_reminded("no_trip", user_id)
+            sent_b += 1
+        except (TelegramForbiddenError, TelegramBadRequest):
+            await db.mark_reminded("no_trip", user_id)
+        except Exception as e:
+            errors += 1
+            logger.warning("Retention B yuborishda xato (tg=%s): %s", tg_id, e)
+        await asyncio.sleep(0.05)
+
+    logger.info(
+        "Retention tsikli: A nomzod=%d yuborildi=%d | B nomzod=%d yuborildi=%d | xato=%d",
+        len(stale), sent_a, len(idle), sent_b, errors,
+    )
+    return len(stale), sent_a, len(idle), sent_b, errors
+
+
+def _make_open_kb():
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
-
-    r_bot = Bot(token=BOT_TOKEN)
     webapp = os.getenv("WEBAPP_URL", "")
-    await asyncio.sleep(120)  # server to'liq ishga tushsin
 
     def open_kb():
         if not webapp:
@@ -76,40 +120,27 @@ async def retention_loop():
         return InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🚛 Ochish", web_app=WebAppInfo(url=webapp))]
         ])
+    return open_kb
+
+
+async def retention_loop():
+    """Qaytish eslatmalari: har 6 soatda tekshirib, kerakli foydalanuvchilarga
+    shaxsiy turtki yuboradi. Har eslatma bir marta yuboriladi (spam yo'q).
+
+    A) 3+ kun ochiq, 3 kun jim reys -> "xarajatlaringizni kiritib qo'ydingizmi?"
+    B) Mashina qo'shgan, 2+ kun reys ochmagan -> "reys boshlash 10 soniya"
+    """
+    from aiogram import Bot
+
+    r_bot = Bot(token=BOT_TOKEN)
+    open_kb = _make_open_kb()
+    await asyncio.sleep(120)  # server to'liq ishga tushsin
 
     while True:
         try:
-            # A) Ochiq, jim qolgan reyslar
-            for trip_id, tg_id, truck_name, days in await db.get_stale_open_trips():
-                try:
-                    await r_bot.send_message(
-                        tg_id,
-                        f"🚛 {truck_name} bo'yicha reysingiz {days} kundan beri ochiq.\n\n"
-                        f"Xarajatlaringizni kiritib qo'ydingizmi? Yo'lda yozib borsangiz, "
-                        f"reys oxirida aniq sof foyda chiqadi 👇",
-                        reply_markup=open_kb(),
-                    )
-                except Exception:
-                    pass  # bloklagan/o'chirilgan - o'tkazamiz
-                await db.mark_reminded("stale_trip", trip_id)
-                await asyncio.sleep(0.05)
-
-            # B) Mashina bor, reys yo'q
-            for user_id, tg_id in await db.get_users_with_truck_no_trip():
-                try:
-                    await r_bot.send_message(
-                        tg_id,
-                        "Mashinangiz qo'shilgan, lekin birinchi reys hali boshlanmagan 🙂\n\n"
-                        "Reys boshlash 10 soniya oladi — keyingi safaringizda sinab ko'ring: "
-                        "daromad va xarajatni kiritsangiz, foydangiz o'zi hisoblanadi 👇",
-                        reply_markup=open_kb(),
-                    )
-                except Exception:
-                    pass
-                await db.mark_reminded("no_trip", user_id)
-                await asyncio.sleep(0.05)
+            await _run_retention_once(r_bot, open_kb)
         except Exception as e:
-            logger.warning("Retention siklida xato: %s", e)
+            logger.exception("Retention siklida kutilmagan xato: %s", e)
         await asyncio.sleep(6 * 3600)
 
 
@@ -525,6 +556,8 @@ async def run_bot():
             [InlineKeyboardButton(text="🚛 Moshinalar (Excel)", callback_data="admin_trucks")],
             [InlineKeyboardButton(text="🧭 Reyslar (Excel)", callback_data="admin_trips")],
             [InlineKeyboardButton(text="📣 Hammaga xabar yuborish", callback_data="admin_broadcast")],
+            [InlineKeyboardButton(text="🔔 Eslatmalarni hozir yuborish", callback_data="admin_retention_run")],
+            [InlineKeyboardButton(text="♻️ Eslatma belgilarini tozalash", callback_data="admin_retention_reset")],
         ])
 
     @dp.message(Command("admin"))
@@ -589,6 +622,46 @@ async def run_bot():
     # ---------------- BROADCAST (hammaga xabar) ----------------
     # broadcast_state: {"waiting": True} - matn kutilyapti; {"text": "..."} - tasdiqlash kutilyapti
     broadcast_state = {}
+
+    @dp.callback_query(F.data == "admin_retention_run")
+    async def cb_retention_run(callback: CallbackQuery):
+        """Retention eslatmalarini DARHOL yuborish (6 soat kutmasdan) + hisobot."""
+        if not is_admin(callback):
+            await callback.answer("Ruxsat yo'q", show_alert=True)
+            return
+        await callback.answer()
+        marked = await db.count_reminders()
+        await callback.message.answer(
+            f"🔔 Eslatma tsikli boshlandi...\n"
+            f"(Avval belgilanganlar: jim reys={marked.get('stale_trip', 0)}, "
+            f"reyssiz={marked.get('no_trip', 0)})"
+        )
+        try:
+            na, sa, nb, sb, err = await _run_retention_once(bot, _make_open_kb())
+            await callback.message.answer(
+                f"✅ Yakunlandi:\n\n"
+                f"🚛 Jim qolgan reyslar: {na} nomzod, {sa} ta yuborildi\n"
+                f"📥 Mashina bor/reys yo'q: {nb} nomzod, {sb} ta yuborildi\n"
+                f"⚠️ Xatolar: {err}\n\n"
+                f"(Nomzod 0 bo'lsa - hammasi avval belgilangan. "
+                f"Qayta yuborish uchun: ♻️ tozalash → 🔔 yuborish)"
+            )
+        except Exception as e:
+            await callback.message.answer(f"❌ Xato: {e}")
+
+    @dp.callback_query(F.data == "admin_retention_reset")
+    async def cb_retention_reset(callback: CallbackQuery):
+        if not is_admin(callback):
+            await callback.answer("Ruxsat yo'q", show_alert=True)
+            return
+        marked = await db.count_reminders()
+        await db.clear_reminders()
+        await callback.message.answer(
+            f"♻️ Belgilar tozalandi (jim reys={marked.get('stale_trip', 0)}, "
+            f"reyssiz={marked.get('no_trip', 0)} edi).\n\n"
+            f"Endi 🔔 tugmasini bossangiz, barcha mos foydalanuvchilarga qaytadan yuboriladi."
+        )
+        await callback.answer()
 
     @dp.callback_query(F.data == "admin_broadcast")
     async def cb_broadcast_start(callback: CallbackQuery):
