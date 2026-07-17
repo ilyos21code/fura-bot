@@ -56,6 +56,63 @@ async def update_rate_loop():
         await asyncio.sleep(6 * 3600)
 
 
+async def retention_loop():
+    """Qaytish eslatmalari: har 6 soatda tekshirib, kerakli foydalanuvchilarga
+    shaxsiy turtki yuboradi. Har eslatma turi bir marta yuboriladi (spam yo'q).
+
+    A) 3+ kun ochiq, 3 kun jim reys -> "xarajatlaringizni kiritib qo'ydingizmi?"
+    B) Mashina qo'shgan, 2+ kun reys ochmagan -> "reys boshlash 10 soniya"
+    """
+    from aiogram import Bot
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+
+    r_bot = Bot(token=BOT_TOKEN)
+    webapp = os.getenv("WEBAPP_URL", "")
+    await asyncio.sleep(120)  # server to'liq ishga tushsin
+
+    def open_kb():
+        if not webapp:
+            return None
+        return InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🚛 Ochish", web_app=WebAppInfo(url=webapp))]
+        ])
+
+    while True:
+        try:
+            # A) Ochiq, jim qolgan reyslar
+            for trip_id, tg_id, truck_name, days in await db.get_stale_open_trips():
+                try:
+                    await r_bot.send_message(
+                        tg_id,
+                        f"🚛 {truck_name} bo'yicha reysingiz {days} kundan beri ochiq.\n\n"
+                        f"Xarajatlaringizni kiritib qo'ydingizmi? Yo'lda yozib borsangiz, "
+                        f"reys oxirida aniq sof foyda chiqadi 👇",
+                        reply_markup=open_kb(),
+                    )
+                except Exception:
+                    pass  # bloklagan/o'chirilgan - o'tkazamiz
+                await db.mark_reminded("stale_trip", trip_id)
+                await asyncio.sleep(0.05)
+
+            # B) Mashina bor, reys yo'q
+            for user_id, tg_id in await db.get_users_with_truck_no_trip():
+                try:
+                    await r_bot.send_message(
+                        tg_id,
+                        "Mashinangiz qo'shilgan, lekin birinchi reys hali boshlanmagan 🙂\n\n"
+                        "Reys boshlash 10 soniya oladi — keyingi safaringizda sinab ko'ring: "
+                        "daromad va xarajatni kiritsangiz, foydangiz o'zi hisoblanadi 👇",
+                        reply_markup=open_kb(),
+                    )
+                except Exception:
+                    pass
+                await db.mark_reminded("no_trip", user_id)
+                await asyncio.sleep(0.05)
+        except Exception as e:
+            logger.warning("Retention siklida xato: %s", e)
+        await asyncio.sleep(6 * 3600)
+
+
 async def daily_backup_loop():
     """Har 24 soatda baza faylini adminga Telegram orqali yuboradi -
     qo'shimcha himoya qatlami: server nima bo'lsa ham, admin qo'lida
@@ -248,6 +305,24 @@ async def api_finish_trip(trip_id: int, x_telegram_init_data: str = Header(defau
     if not trip:
         raise HTTPException(404, "Reys topilmadi")
     await db.finish_trip(user_id, trip_id)
+    # Reys yakuni "g'alaba" xabari - odat mustahkamlanadi, bot chat tepasiga chiqadi
+    try:
+        result = await db.get_trip_result_for_message(user_id, trip_id)
+        if result:
+            profit, tg_id, truck_name = result
+            sign = "+" if profit >= 0 else ""
+            profit_txt = f"{sign}{profit:,.0f}".replace(",", " ")
+            from aiogram import Bot as _Bot
+            _b = _Bot(token=BOT_TOKEN)
+            await _b.send_message(
+                tg_id,
+                f"✅ Reys yakunlandi! ({truck_name})\n\n"
+                f"💰 Sof natija: {profit_txt} so'm\n\n"
+                f"Keyingi reysda ham omad! 🚛",
+            )
+            await _b.session.close()
+    except Exception:
+        pass  # xabar ketmasa ham reys yopilishi buzilmasin
     return {"ok": True}
 
 
@@ -627,7 +702,7 @@ async def main():
     # shunda so'mga aylantirish to'g'ri ishlaydi.
     current = await get_usd_rate()
     await db.fix_legacy_usd_rates(current)
-    await asyncio.gather(run_web(), run_bot(), update_rate_loop(), daily_backup_loop())
+    await asyncio.gather(run_web(), run_bot(), update_rate_loop(), daily_backup_loop(), retention_loop())
 
 
 if __name__ == "__main__":

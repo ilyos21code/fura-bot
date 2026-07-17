@@ -72,6 +72,14 @@ CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT
 );
+
+CREATE TABLE IF NOT EXISTS reminders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind TEXT NOT NULL,
+    ref_id INTEGER NOT NULL,
+    sent_at TEXT DEFAULT (datetime('now')),
+    UNIQUE(kind, ref_id)
+);
 """
 
 # Har bir summa ASL valyutasida saqlanadi (amount + currency).
@@ -567,3 +575,100 @@ async def admin_trips_rows():
                ORDER BY tr.id"""
         )
         return await cur.fetchall()
+
+
+# ---------------- RETENTION (qaytish eslatmalari) ----------------
+
+async def already_reminded(kind: str, ref_id: int) -> bool:
+    """Bu eslatma avval yuborilganmi (spam himoyasi - har eslatma bir marta)."""
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cur = await conn.execute(
+            "SELECT 1 FROM reminders WHERE kind=? AND ref_id=?", (kind, ref_id)
+        )
+        return await cur.fetchone() is not None
+
+
+async def mark_reminded(kind: str, ref_id: int):
+    async with aiosqlite.connect(DB_PATH) as conn:
+        await conn.execute(
+            "INSERT OR IGNORE INTO reminders (kind, ref_id) VALUES (?, ?)", (kind, ref_id)
+        )
+        await conn.commit()
+
+
+async def get_stale_open_trips(days_open: int = 3, days_quiet: int = 3):
+    """3+ kundan beri ochiq va oxirgi 3 kunda hech narsa kiritilmagan reyslar.
+    Qaytadi: (trip_id, telegram_id, truck_nomi, ochiq_kunlar)"""
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cur = await conn.execute(
+            f"""
+            SELECT tr.id, u.telegram_id, tk.name,
+                   CAST(julianday('now') - julianday(tr.created_at) AS INTEGER)
+            FROM trips tr
+            JOIN users u ON u.id = tr.user_id
+            JOIN trucks tk ON tk.id = tr.truck_id
+            WHERE tr.status = 'active'
+              AND julianday('now') - julianday(tr.created_at) >= {int(days_open)}
+              AND NOT EXISTS (
+                  SELECT 1 FROM trip_expenses e
+                  WHERE e.trip_id = tr.id
+                    AND julianday('now') - julianday(e.created_at) < {int(days_quiet)}
+              )
+              AND NOT EXISTS (
+                  SELECT 1 FROM trip_legs l
+                  WHERE l.trip_id = tr.id
+                    AND julianday('now') - julianday(l.created_at) < {int(days_quiet)}
+              )
+              AND NOT EXISTS (
+                  SELECT 1 FROM reminders r WHERE r.kind='stale_trip' AND r.ref_id=tr.id
+              )
+            """
+        )
+        return await cur.fetchall()
+
+
+async def get_users_with_truck_no_trip(days: int = 2):
+    """Mashina qo'shgan (2+ kun oldin), lekin hech qachon reys ochmagan foydalanuvchilar.
+    Qaytadi: (user_id, telegram_id)"""
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cur = await conn.execute(
+            f"""
+            SELECT DISTINCT u.id, u.telegram_id
+            FROM users u
+            JOIN trucks tk ON tk.user_id = u.id
+            WHERE julianday('now') - julianday(tk.created_at) >= {int(days)}
+              AND NOT EXISTS (SELECT 1 FROM trips tr WHERE tr.user_id = u.id)
+              AND NOT EXISTS (
+                  SELECT 1 FROM reminders r WHERE r.kind='no_trip' AND r.ref_id=u.id
+              )
+            """
+        )
+        return await cur.fetchall()
+
+
+async def get_trip_result_for_message(user_id: int, trip_id: int):
+    """Reys yakuni xabari uchun: (foyda_so'mda, telegram_id, truck_nomi)."""
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cur = await conn.execute(
+            """SELECT COALESCE(SUM(CASE WHEN currency='USD' THEN price*rate ELSE price END),0)
+               FROM trip_legs WHERE trip_id=?""",
+            (trip_id,),
+        )
+        income = (await cur.fetchone())[0]
+        cur = await conn.execute(
+            """SELECT COALESCE(SUM(CASE WHEN currency='USD' THEN amount*rate ELSE amount END),0)
+               FROM trip_expenses WHERE trip_id=?""",
+            (trip_id,),
+        )
+        expense = (await cur.fetchone())[0]
+        cur = await conn.execute(
+            """SELECT u.telegram_id, tk.name FROM trips tr
+               JOIN users u ON u.id=tr.user_id
+               JOIN trucks tk ON tk.id=tr.truck_id
+               WHERE tr.id=? AND tr.user_id=?""",
+            (trip_id, user_id),
+        )
+        row = await cur.fetchone()
+        if not row:
+            return None
+        return (income - expense, row[0], row[1])
