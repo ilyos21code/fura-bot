@@ -1,12 +1,14 @@
 import asyncio
 import logging
 import os
+import re
 import time
+from typing import Annotated
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, StringConstraints
 import uvicorn
 
 import database as db
@@ -18,8 +20,64 @@ logger = logging.getLogger(__name__)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "PUT_YOUR_TOKEN_HERE")
 DEV_MODE = os.getenv("DEV_MODE", "0") == "1"
+MAX_TRUCKS_PER_USER = 5
 
 app = FastAPI(title="Fura Mini App")
+
+
+def bot_token_configured() -> bool:
+    return bool(BOT_TOKEN) and BOT_TOKEN != "PUT_YOUR_TOKEN_HERE"
+
+
+def require_bot_token():
+    # Tokensiz Telegram imzosini tekshirib bo'lmaydi (standart token hammaga ma'lum) -
+    # bunday holatda hech kimni kiritmaymiz
+    if not bot_token_configured():
+        raise HTTPException(status_code=503, detail="BOT_TOKEN sozlanmagan")
+
+
+# API ichidan xabar yuborish uchun bitta umumiy bot (kuzatish so'rovlari)
+_notify_bot = None
+
+
+def get_notify_bot():
+    global _notify_bot
+    if _notify_bot is None and bot_token_configured():
+        from aiogram import Bot
+        _notify_bot = Bot(token=BOT_TOKEN)
+    return _notify_bot
+
+
+# ---------------- Davlat raqami ----------------
+# Kirill klaviaturada yozilgan, lotinchaga o'xshash harflar (bir xil raqam ikki xil
+# yozilib, takroriy qo'shilishning oldini olish uchun)
+_CYR_TO_LAT = str.maketrans("АВЕКМНОРСТУХ", "ABEKMHOPCTYX")
+
+
+def normalize_plate(raw: str):
+    """'01 a 123 bc' -> '01A123BC'. Noto'g'ri bo'lsa None."""
+    plate = re.sub(r"[\s\-_.]", "", raw.upper().translate(_CYR_TO_LAT))
+    if not re.fullmatch(r"[A-Z0-9]{6,10}", plate) or not re.search(r"\d", plate):
+        return None
+    return plate
+
+
+def format_plate(plate: str) -> str:
+    """O'zbekiston raqamlarini o'qishga qulay ko'rinishga keltiradi: 01 A 123 BC / 01 123 ABC."""
+    m = re.fullmatch(r"(\d{2})([A-Z])(\d{3})([A-Z]{2})", plate)
+    if m:
+        return " ".join(m.groups())
+    m = re.fullmatch(r"(\d{2})(\d{3})([A-Z]{3})", plate)
+    if m:
+        return " ".join(m.groups())
+    return plate
+
+
+def plate_or_400(raw: str) -> str:
+    plate = normalize_plate(raw)
+    if not plate:
+        raise HTTPException(400, "Davlat raqami noto'g'ri")
+    return plate
 
 # Joriy USD kursi (xotirada), doimiy yangilanib turadi
 _current_usd_rate = rate_module.DEFAULT_RATE
@@ -179,25 +237,40 @@ async def get_user_id(x_telegram_init_data: str = Header(default="")) -> int:
     if DEV_MODE and not x_telegram_init_data:
         # Faqat lokal test uchun: haqiqiy Telegram ma'lumoti bo'lmasa ham ishlash imkonini beradi
         return await db.get_or_create_user(telegram_id=999999999, full_name="Dev User")
+    require_bot_token()
     try:
         user = validate_init_data(x_telegram_init_data, BOT_TOKEN)
     except InitDataError as e:
         raise HTTPException(status_code=401, detail=str(e))
+    full_name = " ".join(filter(None, [user.get("first_name"), user.get("last_name")]))
     return await db.get_or_create_user(
-        telegram_id=user["id"], full_name=user.get("first_name", "")
+        telegram_id=user["id"], full_name=full_name, username=user.get("username") or ""
     )
 
 
 # ---------------- Pydantic modellar ----------------
+Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
+Note = Annotated[str, StringConstraints(strip_whitespace=True, max_length=500)]
+Money = Annotated[float, Field(gt=0, allow_inf_nan=False)]
+Currency = Annotated[str, Field(pattern="^(UZS|USD)$")]
+PlateText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=20)]
+
+
 class TruckIn(BaseModel):
-    name: str
+    plate: PlateText
+    brand: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=50)]
+    volume: Annotated[float, Field(gt=0, le=100000, allow_inf_nan=False)]
+
+
+class WatchIn(BaseModel):
+    plate: PlateText
 
 
 class TruckExpenseIn(BaseModel):
-    category: str
-    amount: float
-    currency: str = "UZS"
-    note: str = ""
+    category: Text
+    amount: Money
+    currency: Currency = "UZS"
+    note: Note = ""
 
 
 class TripIn(BaseModel):
@@ -205,17 +278,17 @@ class TripIn(BaseModel):
 
 
 class TripExpenseIn(BaseModel):
-    category: str
-    amount: float
-    currency: str = "UZS"
-    note: str = ""
+    category: Text
+    amount: Money
+    currency: Currency = "UZS"
+    note: Note = ""
 
 
 class TripLegIn(BaseModel):
-    from_point: str
-    to_point: str
-    price: float
-    currency: str = "UZS"
+    from_point: Text
+    to_point: Text
+    price: Money
+    currency: Currency = "UZS"
 
 
 # ---------------- Kurs ----------------
@@ -231,21 +304,49 @@ async def api_list_trucks(x_telegram_init_data: str = Header(default="")):
     user_id = await get_user_id(x_telegram_init_data)
     rows = await db.list_trucks(user_id)
     return [
-        {"id": r[0], "name": r[1], "created_at": r[2], "repair_total": r[3]}
+        {
+            "id": r[0], "name": r[1], "created_at": r[2], "repair_total": r[3],
+            "plate": r[4], "brand": r[5], "volume": r[6],
+        }
         for r in rows
     ]
+
+
+@app.get("/api/trucks/check")
+async def api_check_plate(plate: str = Query(max_length=20), x_telegram_init_data: str = Header(default="")):
+    """Qo'shishning 1-qadami: raqam bo'shmi, o'zingizdami yoki boshqa akkauntdami."""
+    user_id = await get_user_id(x_telegram_init_data)
+    normalized = plate_or_400(plate)
+    result = {"plate": normalized, "display": format_plate(normalized), "status": "free", "request": None}
+    truck = await db.find_truck_by_plate(normalized)
+    if truck:
+        if truck[1] == user_id:
+            result["status"] = "mine"
+        else:
+            result["status"] = "taken"
+            watch = await db.get_watch(truck[0], user_id)
+            result["request"] = watch[1] if watch else None
+    return result
 
 
 @app.post("/api/trucks")
 async def api_add_truck(payload: TruckIn, x_telegram_init_data: str = Header(default="")):
     user_id = await get_user_id(x_telegram_init_data)
-    truck_id = await db.add_truck(user_id, payload.name.strip())
-    return {"id": truck_id, "name": payload.name.strip()}
+    plate = plate_or_400(payload.plate)
+    if await db.count_trucks(user_id) >= MAX_TRUCKS_PER_USER:
+        raise HTTPException(400, f"Bitta akkauntga {MAX_TRUCKS_PER_USER} tagacha mashina qo'shish mumkin")
+    name = format_plate(plate)
+    truck_id = await db.add_truck(user_id, name, plate, payload.brand, payload.volume)
+    if truck_id is None:
+        raise HTTPException(409, "Bu raqamli mashina allaqachon qo'shilgan")
+    return {"id": truck_id, "name": name, "plate": plate, "brand": payload.brand, "volume": payload.volume}
 
 
 @app.delete("/api/trucks/{truck_id}")
 async def api_delete_truck(truck_id: int, x_telegram_init_data: str = Header(default="")):
     user_id = await get_user_id(x_telegram_init_data)
+    if not await db.get_truck(user_id, truck_id):
+        raise HTTPException(404, "Fura topilmadi")
     await db.delete_truck(user_id, truck_id)
     return {"ok": True}
 
@@ -293,20 +394,21 @@ async def api_delete_truck_expense(
 async def api_list_trips(x_telegram_init_data: str = Header(default="")):
     user_id = await get_user_id(x_telegram_init_data)
     rows = await db.list_trips(user_id)
-    return [
-        {
-            "id": r[0],
-            "truck_id": r[1],
-            "truck_name": r[2],
-            "status": r[3],
-            "created_at": r[4],
-            "finished_at": r[5],
-            "income": r[6],
-            "expense": r[7],
-            "profit": r[6] - r[7],
-        }
-        for r in rows
-    ]
+    return [trip_row_to_dict(r) for r in rows]
+
+
+def trip_row_to_dict(r):
+    return {
+        "id": r[0],
+        "truck_id": r[1],
+        "truck_name": r[2],
+        "status": r[3],
+        "created_at": r[4],
+        "finished_at": r[5],
+        "income": r[6],
+        "expense": r[7],
+        "profit": r[6] - r[7],
+    }
 
 
 @app.get("/api/trips/active")
@@ -373,6 +475,11 @@ async def api_get_trip(trip_id: int, x_telegram_init_data: str = Header(default=
     trip = await db.get_trip(user_id, trip_id)
     if not trip:
         raise HTTPException(404, "Reys topilmadi")
+    return await trip_detail(trip)
+
+
+async def trip_detail(trip):
+    trip_id = trip[0]
     expenses = await db.list_trip_expenses(trip_id)
     legs = await db.list_trip_legs(trip_id)
     # list_trip_legs: id, from, to, price, currency, rate, created_at
@@ -461,6 +568,197 @@ async def api_report(x_telegram_init_data: str = Header(default="")):
     return await db.get_report(user_id)
 
 
+# ---------------- Kuzatish (boshqa akkauntdan faqat ko'rish) ----------------
+def person_name(full_name, username) -> str:
+    name = full_name or "Foydalanuvchi"
+    return f"{name} (@{username})" if username else name
+
+
+async def send_to_user(telegram_id: int, text: str, reply_markup=None):
+    """Bot orqali xabar. Foydalanuvchi botni bloklagan bo'lsa ham API so'rovi buzilmaydi."""
+    b = get_notify_bot()
+    if not b or not telegram_id:
+        return
+    try:
+        await b.send_message(telegram_id, text, reply_markup=reply_markup)
+    except Exception as e:
+        logger.warning("Xabar yuborilmadi (tg=%s): %s", telegram_id, e)
+
+
+async def decide_request(owner_id: int, watch_id: int, approve: bool):
+    """So'rovni hal qiladi va kuzatuvchiga xabar beradi. Fura nomini yoki None qaytaradi."""
+    req = await db.get_watch_request_for_owner(owner_id, watch_id)
+    if not req or not await db.decide_watch_request(owner_id, watch_id, approve):
+        return None
+    _, _, watcher_tg_id, truck_name = req
+    await send_to_user(
+        watcher_tg_id,
+        f"✅ {truck_name} mashinasini kuzatishga ruxsat berildi. "
+        "Ilovadagi «Moshinalar» bo'limida ko'rishingiz mumkin."
+        if approve else
+        f"❌ {truck_name} mashinasi egasi kuzatish so'rovingizni rad etdi.",
+    )
+    return truck_name
+
+
+async def handle_watch_callback(callback):
+    """Egasi bot xabaridagi "Ruxsat berish" / "Rad etish" tugmasini bosganda."""
+    try:
+        _, action, watch_id = callback.data.split(":")
+        watch_id = int(watch_id)
+    except ValueError:
+        return await callback.answer()
+    owner_id = await db.get_user_by_telegram_id(callback.from_user.id)
+    approve = action == "ok"
+    truck_name = await decide_request(owner_id, watch_id, approve) if owner_id else None
+    if not truck_name:
+        await callback.answer("Bu so'rov allaqachon ko'rib chiqilgan yoki bekor qilingan", show_alert=True)
+        await callback.message.edit_reply_markup(reply_markup=None)
+        return
+    await callback.answer("Ruxsat berildi" if approve else "Rad etildi")
+    await callback.message.edit_text(
+        callback.message.text + ("\n\n✅ Ruxsat berildi" if approve else "\n\n❌ Rad etildi")
+    )
+
+
+@app.get("/api/sharing")
+async def api_sharing(x_telegram_init_data: str = Header(default="")):
+    """Moshinalar sahifasi uchun: limit, kelgan so'rovlar va kuzatilayotgan mashinalar."""
+    user_id = await get_user_id(x_telegram_init_data)
+    incoming = await db.list_incoming_requests(user_id)
+    watching = await db.list_watching(user_id)
+    return {
+        "max_trucks": MAX_TRUCKS_PER_USER,
+        "incoming": [
+            {"id": r[0], "truck_id": r[1], "truck_name": r[2],
+             "watcher_name": person_name(r[3], r[4]), "created_at": r[5]}
+            for r in incoming
+        ],
+        "watching": [
+            {"id": r[0], "status": r[1], "truck_id": r[2], "truck_name": r[3],
+             "brand": r[4], "volume": r[5]}
+            for r in watching
+        ],
+    }
+
+
+@app.post("/api/watch")
+async def api_request_watch(payload: WatchIn, x_telegram_init_data: str = Header(default="")):
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+    user_id = await get_user_id(x_telegram_init_data)
+    plate = plate_or_400(payload.plate)
+    truck = await db.find_truck_by_plate(plate)
+    if not truck:
+        raise HTTPException(404, "Bu raqamli mashina topilmadi")
+    truck_id, owner_id, truck_name = truck
+    if owner_id == user_id:
+        raise HTTPException(400, "Bu mashina o'zingizniki")
+    existing = await db.get_watch(truck_id, user_id)
+    if existing:
+        if existing[1] == "rejected":
+            raise HTTPException(403, "Mashina egasi so'rovingizni rad etgan")
+        return {"id": existing[0], "status": existing[1]}
+
+    watch_id = await db.create_watch_request(truck_id, user_id)
+    me = await db.get_user_name(user_id)
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✅ Ruxsat berish", callback_data=f"watch:ok:{watch_id}"),
+        InlineKeyboardButton(text="❌ Rad etish", callback_data=f"watch:no:{watch_id}"),
+    ]])
+    await send_to_user(
+        await db.get_telegram_id(owner_id),
+        f"👀 Kuzatish so'rovi\n\n{person_name(*me)} sizning {truck_name} raqamli "
+        "mashinangizni kuzatmoqchi.\n\nRuxsat bersangiz, u bu mashinaning xarajatlari va "
+        "reyslarini ko'ra oladi, lekin hech narsani o'zgartira olmaydi.",
+        reply_markup=kb,
+    )
+    return {"id": watch_id, "status": "pending"}
+
+
+@app.post("/api/watch/{watch_id}/approve")
+async def api_approve_watch(watch_id: int, x_telegram_init_data: str = Header(default="")):
+    user_id = await get_user_id(x_telegram_init_data)
+    if not await decide_request(user_id, watch_id, approve=True):
+        raise HTTPException(404, "So'rov topilmadi")
+    return {"ok": True}
+
+
+@app.post("/api/watch/{watch_id}/reject")
+async def api_reject_watch(watch_id: int, x_telegram_init_data: str = Header(default="")):
+    user_id = await get_user_id(x_telegram_init_data)
+    if not await decide_request(user_id, watch_id, approve=False):
+        raise HTTPException(404, "So'rov topilmadi")
+    return {"ok": True}
+
+
+@app.delete("/api/watch/{watch_id}")
+async def api_delete_watch(watch_id: int, x_telegram_init_data: str = Header(default="")):
+    """Kuzatuvchi kuzatishni to'xtatadi yoki egasi kuzatuvchini olib tashlaydi."""
+    user_id = await get_user_id(x_telegram_init_data)
+    if not await db.delete_watch(user_id, watch_id):
+        raise HTTPException(404, "So'rov topilmadi")
+    return {"ok": True}
+
+
+@app.get("/api/trucks/{truck_id}/watchers")
+async def api_truck_watchers(truck_id: int, x_telegram_init_data: str = Header(default="")):
+    user_id = await get_user_id(x_telegram_init_data)
+    if not await db.get_truck(user_id, truck_id):
+        raise HTTPException(404, "Fura topilmadi")
+    rows = await db.list_truck_watchers(user_id, truck_id)
+    return [
+        {"id": r[0], "name": person_name(r[1], r[2]), "status": r[3], "created_at": r[4]}
+        for r in rows
+    ]
+
+
+async def watched_truck_or_404(user_id: int, truck_id: int):
+    truck = await db.get_watched_truck(user_id, truck_id)
+    if not truck:
+        raise HTTPException(404, "Fura topilmadi")
+    return truck
+
+
+@app.get("/api/watched/{truck_id}")
+async def api_watched_truck(truck_id: int, x_telegram_init_data: str = Header(default="")):
+    user_id = await get_user_id(x_telegram_init_data)
+    truck = await watched_truck_or_404(user_id, truck_id)
+    # list_truck_expenses: id, category, amount, currency, rate, note, created_at
+    repairs = await db.list_truck_expenses(truck_id)
+    trips = [trip_row_to_dict(r) for r in await db.list_truck_trips(truck_id)]
+    repair_total = sum((r[2] * r[4]) if r[3] == "USD" else r[2] for r in repairs)
+    income = sum(t["income"] for t in trips)
+    trip_expense = sum(t["expense"] for t in trips)
+    return {
+        "watch_id": truck[6],
+        "truck": {
+            "id": truck[0], "name": truck[1], "plate": truck[2],
+            "brand": truck[3], "volume": truck[4], "created_at": truck[5],
+        },
+        "income": income,
+        "expense": trip_expense + repair_total,
+        "repair_total": repair_total,
+        "profit": income - trip_expense - repair_total,
+        "repairs": [
+            {"id": r[0], "category": r[1], "amount": r[2], "currency": r[3], "rate": r[4],
+             "note": r[5], "created_at": r[6]}
+            for r in repairs
+        ],
+        "trips": trips,
+    }
+
+
+@app.get("/api/watched/{truck_id}/trips/{trip_id}")
+async def api_watched_trip(truck_id: int, trip_id: int, x_telegram_init_data: str = Header(default="")):
+    user_id = await get_user_id(x_telegram_init_data)
+    await watched_truck_or_404(user_id, truck_id)
+    trip = await db.get_truck_trip(truck_id, trip_id)
+    if not trip:
+        raise HTTPException(404, "Reys topilmadi")
+    return await trip_detail(trip)
+
+
 # ---------------- Admin ----------------
 ADMIN_TELEGRAM_ID = os.getenv("ADMIN_TELEGRAM_ID", "")
 
@@ -468,6 +766,7 @@ ADMIN_TELEGRAM_ID = os.getenv("ADMIN_TELEGRAM_ID", "")
 async def get_telegram_id(x_telegram_init_data: str) -> int:
     if DEV_MODE and not x_telegram_init_data:
         return 999999999
+    require_bot_token()
     try:
         user = validate_init_data(x_telegram_init_data, BOT_TOKEN)
     except InitDataError as e:
@@ -548,6 +847,9 @@ async def run_bot():
             )
         else:
             await message.answer("Bot sozlanmoqda, WEBAPP_URL hali berilmagan.")
+
+    # Kuzatish so'rovi: egasi "Ruxsat berish" / "Rad etish" tugmasini bosganda
+    dp.callback_query(F.data.startswith("watch:"))(handle_watch_callback)
 
     def admin_menu() -> InlineKeyboardMarkup:
         return InlineKeyboardMarkup(inline_keyboard=[

@@ -40,7 +40,17 @@ qadam-baqadam sozlaymiz — hoziroq bezovta bo'lishingiz shart emas.
 ## Bot qanday ishlaydi (funksional tavsif)
 
 ### 🚛 Moshinalar
-- Yangi fura qo'shish
+- Yangi fura 3 qadamda qo'shiladi: davlat raqami → markasi → necha kub
+- Bitta akkauntga 5 tagacha mashina
+- Har bir davlat raqami butun botda faqat bir marta qo'shilishi mumkin
+  (`01 A 123 BC`, `01a123bc`, kirill harflarida yozilgani — hammasi bitta raqam)
+- Raqam boshqa akkauntda bo'lsa, "allaqachon qo'shilgan" deb chiqadi va egasiga
+  kuzatish so'rovini yuborish mumkin. Egasi botda "Ruxsat berish / Rad etish"
+  tugmali xabar oladi (so'rov ilovadagi "Moshinalar" bo'limida ham ko'rinadi)
+- Ruxsat olgan akkaunt mashinaning xarajatlari, reyslari va foydasini ko'radi,
+  lekin hech narsani o'zgartira olmaydi. Egasi kuzatuvchini istalgan payt olib
+  tashlashi mumkin
+- Eski (raqamsiz qo'shilgan) furalar o'z nomi bilan qoladi
 - Har bir furaga ta'mirlash/balon kabi xarajatlarni yozib borish
 - Har bir fura kartasida jami ta'mirlash summasi ko'rinadi
 

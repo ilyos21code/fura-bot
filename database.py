@@ -80,7 +80,32 @@ CREATE TABLE IF NOT EXISTS reminders (
     sent_at TEXT DEFAULT (datetime('now')),
     UNIQUE(kind, ref_id)
 );
+
+-- Boshqa akkauntlar mashinani kuzatishi (faqat ko'rish). status: pending / approved / rejected
+CREATE TABLE IF NOT EXISTS truck_watchers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    truck_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at TEXT DEFAULT (datetime('now')),
+    decided_at TEXT,
+    UNIQUE (truck_id, user_id),
+    FOREIGN KEY (truck_id) REFERENCES trucks(id),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
 """
+
+# Eski bazalarga keyin qo'shilgan ustunlar: (jadval, ustun, turi)
+COLUMN_MIGRATIONS = [
+    ("users", "username", "TEXT"),
+    ("trucks", "plate", "TEXT"),
+    ("trucks", "brand", "TEXT"),
+    ("trucks", "volume", "REAL"),
+]
+
+# So'mga aylantirilgan summa (har yozuv o'z muzlatilgan kursi bilan)
+AMOUNT_UZS = "CASE WHEN currency='USD' THEN amount*rate ELSE amount END"
+PRICE_UZS = "CASE WHEN currency='USD' THEN price*rate ELSE price END"
 
 # Har bir summa ASL valyutasida saqlanadi (amount + currency).
 # 'rate' — yozuv kiritilgan PAYTDAGI USD kursi (muzlatilgan).
@@ -107,6 +132,15 @@ async def init_db():
                 await conn.execute(
                     f"ALTER TABLE {table} ADD COLUMN rate REAL NOT NULL DEFAULT 1"
                 )
+        for table, column, col_type in COLUMN_MIGRATIONS:
+            cur = await conn.execute(f"PRAGMA table_info({table})")
+            if column not in [row[1] for row in await cur.fetchall()]:
+                await conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
+        # Bitta davlat raqami butun bazada faqat bir marta bo'lishi mumkin.
+        # Eski (raqamsiz qo'shilgan) furalarda plate=NULL, ular bu cheklovga kirmaydi.
+        await conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_trucks_plate ON trucks(plate) WHERE plate IS NOT NULL"
+        )
         await conn.commit()
 
 
@@ -143,35 +177,76 @@ async def fix_legacy_usd_rates(current_rate: float):
         await conn.commit()
 
 
-async def get_or_create_user(telegram_id: int, full_name: str = "") -> int:
+async def get_or_create_user(telegram_id: int, full_name: str = "", username: str = "") -> int:
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cur = await conn.execute(
+            "SELECT id, full_name, username FROM users WHERE telegram_id=?", (telegram_id,)
+        )
+        row = await cur.fetchone()
+        if row:
+            # Ism yoki username o'zgargan bo'lsa yangilab qo'yamiz (kuzatish so'rovlarida ko'rinadi)
+            if (row[1] or "", row[2] or "") != (full_name, username):
+                await conn.execute(
+                    "UPDATE users SET full_name=?, username=? WHERE id=?",
+                    (full_name, username, row[0]),
+                )
+                await conn.commit()
+            return row[0]
+        cur = await conn.execute(
+            "INSERT INTO users (telegram_id, full_name, username) VALUES (?, ?, ?)",
+            (telegram_id, full_name, username),
+        )
+        await conn.commit()
+        return cur.lastrowid
+
+
+async def get_telegram_id(user_id: int):
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cur = await conn.execute("SELECT telegram_id FROM users WHERE id=?", (user_id,))
+        row = await cur.fetchone()
+        return row[0] if row else None
+
+
+async def get_user_name(user_id: int):
+    """(full_name, username)"""
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cur = await conn.execute("SELECT full_name, username FROM users WHERE id=?", (user_id,))
+        return await cur.fetchone() or ("", "")
+
+
+async def get_user_by_telegram_id(telegram_id: int):
     async with aiosqlite.connect(DB_PATH) as conn:
         cur = await conn.execute("SELECT id FROM users WHERE telegram_id=?", (telegram_id,))
         row = await cur.fetchone()
-        if row:
-            return row[0]
-        cur = await conn.execute(
-            "INSERT INTO users (telegram_id, full_name) VALUES (?, ?)",
-            (telegram_id, full_name),
-        )
-        await conn.commit()
-        return cur.lastrowid
+        return row[0] if row else None
 
 
 # ---------------- Trucks ----------------
-async def add_truck(user_id: int, name: str) -> int:
+async def add_truck(user_id: int, name: str, plate: str, brand: str, volume: float):
+    """Yangi fura qo'shadi. Davlat raqami allaqachon band bo'lsa None qaytaradi."""
     async with aiosqlite.connect(DB_PATH) as conn:
-        # Bir xil nomli fura allaqachon bor bo'lsa, yangisini qo'shmaymiz (takrorlanishning oldini olish)
-        cur = await conn.execute(
-            "SELECT id FROM trucks WHERE user_id=? AND name=?", (user_id, name)
-        )
-        existing = await cur.fetchone()
-        if existing:
-            return existing[0]
-        cur = await conn.execute(
-            "INSERT INTO trucks (user_id, name) VALUES (?, ?)", (user_id, name)
-        )
+        try:
+            cur = await conn.execute(
+                "INSERT INTO trucks (user_id, name, plate, brand, volume) VALUES (?, ?, ?, ?, ?)",
+                (user_id, name, plate, brand, volume),
+            )
+        except aiosqlite.IntegrityError:
+            return None
         await conn.commit()
         return cur.lastrowid
+
+
+async def count_trucks(user_id: int) -> int:
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cur = await conn.execute("SELECT COUNT(*) FROM trucks WHERE user_id=?", (user_id,))
+        return (await cur.fetchone())[0]
+
+
+async def find_truck_by_plate(plate: str):
+    """(truck_id, egasining user_id, nomi) yoki None."""
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cur = await conn.execute("SELECT id, user_id, name FROM trucks WHERE plate=?", (plate,))
+        return await cur.fetchone()
 
 
 async def list_trucks(user_id: int):
@@ -179,7 +254,8 @@ async def list_trucks(user_id: int):
         cur = await conn.execute(
             """SELECT t.id, t.name, t.created_at,
                       COALESCE((SELECT SUM(CASE WHEN currency='USD' THEN amount*rate ELSE amount END)
-                                FROM truck_expenses WHERE truck_id=t.id), 0) as repair_total
+                                FROM truck_expenses WHERE truck_id=t.id), 0) as repair_total,
+                      t.plate, t.brand, t.volume
                FROM trucks t WHERE t.user_id=? ORDER BY t.created_at DESC""",
             (user_id,),
         )
@@ -209,8 +285,9 @@ async def delete_truck(user_id: int, truck_id: int):
             await conn.execute("DELETE FROM trip_legs WHERE trip_id=?", (tid,))
         # Reyslarni o'chiramiz
         await conn.execute("DELETE FROM trips WHERE truck_id=? AND user_id=?", (truck_id, user_id))
-        # Furaning ta'mirlash xarajatlarini o'chiramiz
+        # Furaning ta'mirlash xarajatlarini va kuzatuvchilarini o'chiramiz
         await conn.execute("DELETE FROM truck_expenses WHERE truck_id=?", (truck_id,))
+        await conn.execute("DELETE FROM truck_watchers WHERE truck_id=?", (truck_id,))
         # Furani o'chiramiz
         await conn.execute("DELETE FROM trucks WHERE id=? AND user_id=?", (truck_id, user_id))
         await conn.commit()
@@ -238,6 +315,9 @@ async def cleanup_orphans(user_id: int):
         # furalariga tegilmaydi - faqat trucks jadvalida umuman yo'q truck_id lar.
         await conn.execute(
             "DELETE FROM truck_expenses WHERE truck_id NOT IN (SELECT id FROM trucks)"
+        )
+        await conn.execute(
+            "DELETE FROM truck_watchers WHERE truck_id NOT IN (SELECT id FROM trucks)"
         )
         await conn.commit()
         return len(orphan_trip_ids)
@@ -430,12 +510,13 @@ async def get_report(user_id: int):
         )
         total_repair = (await cur.fetchone())[0]
 
+        # Oylar kesimida: avval har bir reys alohida hisoblanadi, keyin oy bo'yicha jamlanadi
+        # (aks holda bir oyda bir nechta reys bo'lsa, xarajat faqat bittasidan olinardi)
         cur = await conn.execute(
-            """SELECT strftime('%Y-%m', tr.created_at) as month,
-                      COALESCE(SUM(CASE WHEN l.currency='USD' THEN l.price*l.rate ELSE l.price END),0) as income,
-                      COALESCE((SELECT SUM(CASE WHEN currency='USD' THEN amount*rate ELSE amount END) FROM trip_expenses WHERE trip_id=tr.id),0) as expense
+            f"""SELECT strftime('%Y-%m', tr.created_at) as month,
+                      SUM(COALESCE((SELECT SUM({PRICE_UZS}) FROM trip_legs WHERE trip_id=tr.id),0)) as income,
+                      SUM(COALESCE((SELECT SUM({AMOUNT_UZS}) FROM trip_expenses WHERE trip_id=tr.id),0)) as expense
                FROM trips tr
-               LEFT JOIN trip_legs l ON l.trip_id = tr.id
                WHERE tr.user_id=? AND tr.truck_id IN (SELECT id FROM trucks WHERE user_id=?)
                GROUP BY month ORDER BY month DESC""",
             (user_id, user_id),
@@ -688,3 +769,146 @@ async def clear_reminders():
     async with aiosqlite.connect(DB_PATH) as conn:
         await conn.execute("DELETE FROM reminders")
         await conn.commit()
+
+
+# ---------------- Kuzatish (boshqa akkauntdan faqat ko'rish) ----------------
+async def get_watch(truck_id: int, user_id: int):
+    """(id, status) yoki None."""
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cur = await conn.execute(
+            "SELECT id, status FROM truck_watchers WHERE truck_id=? AND user_id=?",
+            (truck_id, user_id),
+        )
+        return await cur.fetchone()
+
+
+async def create_watch_request(truck_id: int, user_id: int) -> int:
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cur = await conn.execute(
+            "INSERT INTO truck_watchers (truck_id, user_id, status) VALUES (?, ?, 'pending')",
+            (truck_id, user_id),
+        )
+        await conn.commit()
+        return cur.lastrowid
+
+
+async def get_watch_request_for_owner(owner_id: int, watch_id: int):
+    """So'rov shu egaga tegishli bo'lsa: (id, status, kuzatuvchining telegram_id, fura nomi)."""
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cur = await conn.execute(
+            """SELECT w.id, w.status, u.telegram_id, t.name
+               FROM truck_watchers w
+               JOIN trucks t ON t.id = w.truck_id
+               JOIN users u ON u.id = w.user_id
+               WHERE w.id=? AND t.user_id=?""",
+            (watch_id, owner_id),
+        )
+        return await cur.fetchone()
+
+
+async def decide_watch_request(owner_id: int, watch_id: int, approve: bool) -> bool:
+    """Faqat kutilayotgan so'rovni hal qiladi. Muvaffaqiyatli bo'lsa True."""
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cur = await conn.execute(
+            """UPDATE truck_watchers SET status=?, decided_at=datetime('now')
+               WHERE id=? AND status='pending'
+                 AND truck_id IN (SELECT id FROM trucks WHERE user_id=?)""",
+            ("approved" if approve else "rejected", watch_id, owner_id),
+        )
+        await conn.commit()
+        return cur.rowcount > 0
+
+
+async def delete_watch(user_id: int, watch_id: int) -> bool:
+    """Kuzatuvchi o'zi chiqib ketishi yoki mashina egasi uni olib tashlashi mumkin."""
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cur = await conn.execute(
+            """DELETE FROM truck_watchers WHERE id=?
+               AND (user_id=? OR truck_id IN (SELECT id FROM trucks WHERE user_id=?))""",
+            (watch_id, user_id, user_id),
+        )
+        await conn.commit()
+        return cur.rowcount > 0
+
+
+async def list_incoming_requests(owner_id: int):
+    """Egasiga kelgan, hali hal qilinmagan so'rovlar."""
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cur = await conn.execute(
+            """SELECT w.id, t.id, t.name, u.full_name, u.username, w.created_at
+               FROM truck_watchers w
+               JOIN trucks t ON t.id = w.truck_id
+               JOIN users u ON u.id = w.user_id
+               WHERE t.user_id=? AND w.status='pending'
+               ORDER BY w.created_at DESC""",
+            (owner_id,),
+        )
+        return await cur.fetchall()
+
+
+async def list_truck_watchers(owner_id: int, truck_id: int):
+    """Egasi uchun: shu mashinani kuzatayotganlar (rad etilganlardan tashqari)."""
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cur = await conn.execute(
+            """SELECT w.id, u.full_name, u.username, w.status, w.created_at
+               FROM truck_watchers w
+               JOIN trucks t ON t.id = w.truck_id
+               JOIN users u ON u.id = w.user_id
+               WHERE t.id=? AND t.user_id=? AND w.status IN ('pending', 'approved')
+               ORDER BY w.created_at DESC""",
+            (truck_id, owner_id),
+        )
+        return await cur.fetchall()
+
+
+async def list_watching(user_id: int):
+    """Foydalanuvchi kuzatayotgan (yoki so'rov yuborgan) mashinalar."""
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cur = await conn.execute(
+            """SELECT w.id, w.status, t.id, t.name, t.brand, t.volume
+               FROM truck_watchers w
+               JOIN trucks t ON t.id = w.truck_id
+               WHERE w.user_id=?
+               ORDER BY w.created_at DESC""",
+            (user_id,),
+        )
+        return await cur.fetchall()
+
+
+async def get_watched_truck(user_id: int, truck_id: int):
+    """Faqat ruxsat olgan kuzatuvchiga: (id, name, plate, brand, volume, created_at, watch_id)."""
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cur = await conn.execute(
+            """SELECT t.id, t.name, t.plate, t.brand, t.volume, t.created_at, w.id
+               FROM trucks t
+               JOIN truck_watchers w ON w.truck_id = t.id
+               WHERE t.id=? AND w.user_id=? AND w.status='approved'""",
+            (truck_id, user_id),
+        )
+        return await cur.fetchone()
+
+
+async def list_truck_trips(truck_id: int):
+    """Bitta furaning barcha reyslari (list_trips bilan bir xil ko'rinishda)."""
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cur = await conn.execute(
+            f"""SELECT tr.id, tr.truck_id, t.name, tr.status, tr.created_at, tr.finished_at,
+                      COALESCE((SELECT SUM({PRICE_UZS}) FROM trip_legs WHERE trip_id=tr.id), 0) as income,
+                      COALESCE((SELECT SUM({AMOUNT_UZS}) FROM trip_expenses WHERE trip_id=tr.id), 0) as expense
+               FROM trips tr JOIN trucks t ON t.id = tr.truck_id
+               WHERE tr.truck_id=?
+               ORDER BY tr.created_at DESC""",
+            (truck_id,),
+        )
+        return await cur.fetchall()
+
+
+async def get_truck_trip(truck_id: int, trip_id: int):
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cur = await conn.execute(
+            """SELECT tr.id, tr.truck_id, t.name, tr.status, tr.created_at, tr.finished_at
+               FROM trips tr JOIN trucks t ON t.id = tr.truck_id
+               WHERE tr.id=? AND tr.truck_id=?""",
+            (trip_id, truck_id),
+        )
+        return await cur.fetchone()
